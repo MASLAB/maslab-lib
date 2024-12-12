@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "maslab-lib"
+description = "MASLAB Python library for controlling hardwares"
+authors = [{name = "MASLAB 2025 Staff", email = "maslab-2025-staff@mit.edu"}]
+version = "0.0.0+auto.0"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pyyaml",
+    "adafruit-blinka",
+]
+
+[tool.setuptools]
+include-package-data = true

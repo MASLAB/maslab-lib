@@ -1,2 +1,2 @@
-# icm42688
-Python library for using ICM42688
+# MASLAB Library
+Python library for using MASLAB supported hardwares.
