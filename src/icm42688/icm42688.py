@@ -51,6 +51,19 @@ class ICM42688:
         FS4g = 2, 4
         FS2g = 3, 2
 
+    @unique
+    class GYRO_MODE(Enum):
+        OFF = (0,)
+        STANDBY = (1,)
+        LOWNOISE = (3,)
+
+    @unique
+    class ACCEL_MODE(Enum):
+        OFF = (0,)
+        STANDBY = (1,)
+        LOWPOWER = (2,)
+        LOWNOISE = (3,)
+
     __REG_FILE = "icm42688reg.yaml"
     __DEFAULT_ID = 0x47
 
@@ -237,7 +250,7 @@ class ICM42688:
         self.PWR_MGMT0.GYRO_MODE = 2
         self.PWR_MGMT0.ACCEL_MODE = 2
         self.PWR_MGMT0.write()
-        time.sleep(0.001)
+        time.sleep(0.05)
 
         self.set_gyro_fullscale_odr(ICM42688.GYRO_FS.FS2000dps, ICM42688.ODR.ODR1kHz)
         self.set_accel_fullscale_odr(ICM42688.ACCEL_FS.FS16g, ICM42688.ODR.ODR1kHz)
@@ -247,23 +260,48 @@ class ICM42688:
         self.DEVICE_CONFIG.write()
         time.sleep(0.001)
 
+    def __sensors_off(self):
+        self.prev_gyro_mode = self.PWR_MGMT0.GYRO_MODE
+        self.prev_accel_mode = self.PWR_MGMT0.ACCEL_MODE
+        self.PWR_MGMT0.GYRO_MODE = ICM42688.GYRO_MODE.OFF.value
+        self.PWR_MGMT0.ACCEL_MODE = ICM42688.GYRO_MODE.OFF.value
+        self.PWR_MGMT0.write()
+
+    def __sensors_resume(self):
+        self.PWR_MGMT0.GYRO_MODE = self.prev_gyro_mode
+        self.PWR_MGMT0.ACCEL_MODE = self.prev_accel_mode
+        self.PWR_MGMT0.write()
+        time.sleep(0.05)
+
+    def set_gyro_mode(self, mode: GYRO_MODE):
+        self.PWR_MGMT0.GYRO_MODE = mode.value
+        self.PWR_MGMT0.write()
+        time.sleep(0.05)
+
+    def set_accel_mode(self, mode: ACCEL_MODE):
+        self.PWR_MGMT0.ACCEL_MODE = mode.value
+        self.PWR_MGMT0.write()
+        time.sleep(0.001)
+
     def set_gyro_fullscale_odr(self, fullscale: GYRO_FS, odr: ODR):
-        self.gyro_fullscale = fullscale.value[1]
+        self.gyro_fullscale = fullscale
+        self.gyro_odr = odr
         self.GYRO_CONFIG0.GYRO_FS_SEL = fullscale.value[0]
         self.GYRO_CONFIG0.GYRO_ODR = odr.value
         self.GYRO_CONFIG0.write()
 
     def set_accel_fullscale_odr(self, fullscale: ACCEL_FS, odr: ODR):
-        self.accel_fullscale = fullscale.value[1]
+        self.accel_fullscale = fullscale
+        self.accel_odr = odr
         self.ACCEL_CONFIG0.ACCEL_FS_SEL = fullscale.value[0]
         self.ACCEL_CONFIG0.ACCEL_ODR = odr.value
         self.ACCEL_CONFIG0.write()
 
     def __accel_data_to_accel(self, accel_data):
-        return self.accel_fullscale / 32767.5 * accel_data * 9.80665
+        return self.accel_fullscale.value[1] / 32767.5 * accel_data * 9.80665
 
     def __gyro_data_to_gyro(self, gyro_data):
-        return self.gyro_fullscale / 32767.5 * gyro_data * 0.017453
+        return self.gyro_fullscale.value[1] / 32767.5 * gyro_data * 0.017453
 
     def get_data(self):
         """
@@ -281,6 +319,45 @@ class ICM42688:
             self.__gyro_data_to_gyro(self.DATA.GYRO_DATA_Z),
         )
         return accel, gyro
+
+    __GYRO_OFFSET_RES = 1 / 32
+    
+    def __set_gyro_offset(self, gyro_data_reg, up_reg, down_reg):
+        gyro = self.__gyro_data_to_gyro(gyro_data_reg)
+        gyro_offset = int(gyro/ICM42688.__GYRO_OFFSET_RES)
+        setattr(up_reg) = gyro_offset >> 8
+        setattr(down_reg) = gyro_offset & 0xFF
+
+    def calibrate_gyro(self):
+        self.OFFSET_USER.read()
+        prev_gyro_fullscale = self.gyro_fullscale
+        prev_gyro_odr = self.gyro_odr
+        self.set_gyro_fullscale_odr(ICM42688.GYRO_FS.FS125dps, ICM42688.ODR.ODR1kHz)
+        time.sleep(0.1)
+        self.IMU_DATA.read()
+        self.__sensors_off()
+
+        self.__set_gyro_offset(
+            self.IMU_DATA.GYRO_DATA_X, 
+            self.OFFSET_USER.GYRO_X_OFFUSER_UPPER, 
+            self.OFFSET_USER.GYRO_X_OFFSET_USER_LOWER
+        )
+
+        self.__set_gyro_offset(
+            self.IMU_DATA.GYRO_DATA_Y, 
+            self.OFFSET_USER.GYRO_Y_OFFUSER_UPPER, 
+            self.OFFSET_USER.GYRO_Y_OFFSET_USER_LOWER
+        )
+
+        self.__set_gyro_offset(
+            self.IMU_DATA.GYRO_DATA_Z, 
+            self.OFFSET_USER.GYRO_Z_OFFUSER_UPPER, 
+            self.OFFSET_USER.GYRO_Z_OFFSET_USER_LOWER
+        )
+        
+        self.OFFSET_USER.write()
+        self.set_gyro_fullscale_odr(prev_gyro_fullscale, prev_gyro_odr)
+        self.__sensors_resume()
 
 
 if __name__ == "__main__":
