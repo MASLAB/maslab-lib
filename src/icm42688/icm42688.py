@@ -393,7 +393,6 @@ class ICM42688:
         Return data in order x,y,z of acceleration(m/s) and rotation(rad/s)
         """
         self.IMU_DATA.read()
-        print(self.IMU_DATA)
         accel = (
             self.__accel_data_to_accel(self.IMU_DATA.ACCEL_DATA_X),
             self.__accel_data_to_accel(self.IMU_DATA.ACCEL_DATA_Y),
