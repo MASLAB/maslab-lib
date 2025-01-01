@@ -1,5 +1,6 @@
 from enum import Enum, unique
 from serial import Serial
+from serial.tools import list_ports
 import struct
 
 
@@ -81,7 +82,7 @@ class Raven:
                     remainder = self.__table[data[i] ^ remainder]
                 return remainder
 
-        def __init__(self, port, baud, timeout=1):
+        def __init__(self, port, baud, timeout=0.001):
             self.__crc = self.CRC8Encoder()
             self.__serial = Serial(port, baud, timeout=timeout)
 
@@ -133,7 +134,7 @@ class Raven:
             return None, None
 
         def __make_message(self, header, rw, data):
-            rw_header = header
+            rw_header = header.value
             if rw:
                 rw_header |= 0x80
             message = self.__START + bytes([rw_header, len(data)]) + data
@@ -168,8 +169,11 @@ class Raven:
             else:
                 return False
 
-    def __init__(self, port, baud, timeout=1):
-        self.__serial = Raven.__RavenSerial(port, baud, timeout)
+    def __init__(self, port=None, timeout=1):
+        if port is None:
+            port = sorted(list_ports.comports())[0].device
+        # Raven has fixed baud at 460800
+        self.__serial = Raven.__RavenSerial(port, 460800, timeout)
 
     def get_motor_mode(self, motor_channel: MotorChannel, retry):
         """
@@ -178,7 +182,7 @@ class Raven:
         @return: Raven.MotorMode.SPEED or Raven.MotorMode.POSITION or None if fails
         """
         value = self.__serial.read_value(
-            Raven.__MessageType.MOTOR_MODE.value + motor_channel.value, retry
+            Raven.__MessageType.MOTOR_MODE, motor_channel.value, retry
         )
         if value and len(value) == 1:
             if value[0] == 0:
@@ -198,7 +202,7 @@ class Raven:
         @return: True if success
         """
         return self.__serial.write_value(
-            Raven.__MessageType.MOTOR_MODE.value,
+            Raven.__MessageType.MOTOR_MODE,
             motor_channel.value + motor_mode.value,
             retry,
         )
@@ -211,7 +215,7 @@ class Raven:
         @return: command (rps if motor mode is speed and revolutions if motor mode is position) or None if fails
         """
         value = self.__serial.read_value(
-            Raven.__MessageType.MOTOR_CMD.value, motor_channel.value, retry
+            Raven.__MessageType.MOTOR_CMD, motor_channel.value, retry
         )
         if value and len(value) == 4:
             return struct.unpack("f", value)[0]
@@ -226,7 +230,7 @@ class Raven:
         @return: True if success
         """
         return self.__serial.write_value(
-            Raven.__MessageType.MOTOR_CMD.value,
+            Raven.__MessageType.MOTOR_CMD,
             motor_channel.value + struct.pack("f", value),
             retry,
         )
@@ -239,7 +243,7 @@ class Raven:
         @return: (P,I,D) values or None if fails
         """
         value = self.__serial.read_value(
-            Raven.__MessageType.MOTOR_PID.value, motor_channel.value, retry
+            Raven.__MessageType.MOTOR_PID, motor_channel.value, retry
         )
         if value and len(value) == 12:
             return struct.unpack("fff", value)
@@ -290,7 +294,7 @@ class Raven:
             return ValueError("Invalid degree")
 
         return self.__serial.write_value(
-            Raven.__MessageType.SERVO_VALUE.value,
+            Raven.__MessageType.SERVO_VALUE,
             servo_channel.value + struct.pack("H", Raven.__deg_to_count(degree)),
             retry,
         )
@@ -303,7 +307,7 @@ class Raven:
         @return: number of encoder count or None if fails
         """
         value = self.__serial.read_value(
-            Raven.__MessageType.ENCODER_VALUE.value, motor_channel.value, retry
+            Raven.__MessageType.ENCODER_VALUE, motor_channel.value, retry
         )
         if value and len(value) == 4:
             return struct.unpack("i", value)[0]
@@ -311,11 +315,16 @@ class Raven:
 
 
 if __name__ == "__main__":
-    raven = Raven("/dev/ttyACM0", 460800, 10)
+    import numpy as np
+    import time
+
+    raven = Raven("COM6")
 
     i = 0
     while True:
-        print(raven.set_motor_command(Raven.MotorChannel.CH2, 8743.2))
-        print(raven.set_servo_position(Raven.ServoChannel.CH3, 12))
-        print(raven.get_motor_encoder(Raven.ServoChannel.CH2, 1))
-        break
+        p, i, d = np.random.rand(3) * 1000
+        print(p, i, d)
+        pid_set = raven.set_motor_pid(Raven.MotorChannel.CH5, p, i, d)
+        pid_get = raven.get_motor_pid(Raven.MotorChannel.CH5)
+        print(pid_set, pid_get)
+        time.sleep(0.001)
