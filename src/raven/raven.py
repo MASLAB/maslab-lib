@@ -15,8 +15,9 @@ class Raven:
 
     @unique
     class MotorMode(Enum):
-        SPEED = b"\x00"
-        POSITION = b"\x01"
+        OFF = b"\x00"
+        SPEED = b"\x01"
+        POSITION = b"\x02"
 
     @unique
     class ServoChannel(Enum):
@@ -169,7 +170,12 @@ class Raven:
             else:
                 return False
 
-    def __init__(self, port=None, timeout=1):
+    def __init__(self, port: str = None, timeout: float = 0.001):
+        """
+        Initialize a Raven communication instance
+        @port: String of the serial port connected to Raven. Will detect the first open port if not specified.
+        @timeout: Serial timeout in second. Default to 1ms
+        """
         if port is None:
             port = sorted(list_ports.comports())[0].device
         # Raven has fixed baud at 460800
@@ -179,15 +185,18 @@ class Raven:
         """
         Get motor mode
         @motor_channel: Raven.MotorChannel#
-        @return: Raven.MotorMode.SPEED or Raven.MotorMode.POSITION or None if fails
+        @return: Raven.MotorMode or None if fails
         """
+        assert type(motor_channel) == Raven.MotorChannel
         value = self.__serial.read_value(
             Raven.__MessageType.MOTOR_MODE, motor_channel.value, retry
         )
         if value and len(value) == 1:
             if value[0] == 0:
-                return Raven.MotorMode.SPEED
+                return Raven.MotorMode.OFF
             if value[0] == 1:
+                return Raven.MotorMode.SPEED
+            if value[0] == 2:
                 return Raven.MotorMode.POSITION
         return None
 
@@ -201,6 +210,7 @@ class Raven:
         @retry: number of retries if command fails
         @return: True if success
         """
+        assert type(motor_channel) == Raven.MotorChannel
         return self.__serial.write_value(
             Raven.__MessageType.MOTOR_MODE,
             motor_channel.value + motor_mode.value,
@@ -214,6 +224,7 @@ class Raven:
         @retry: number of retries if command fails
         @return: command (rps if motor mode is speed and revolutions if motor mode is position) or None if fails
         """
+        assert type(motor_channel) == Raven.MotorChannel
         value = self.__serial.read_value(
             Raven.__MessageType.MOTOR_CMD, motor_channel.value, retry
         )
@@ -229,6 +240,7 @@ class Raven:
         @retry: number of retries if command fails
         @return: True if success
         """
+        assert type(motor_channel) == Raven.MotorChannel
         return self.__serial.write_value(
             Raven.__MessageType.MOTOR_CMD,
             motor_channel.value + struct.pack("f", value),
@@ -242,6 +254,7 @@ class Raven:
         @retry: number of retries if command fails
         @return: (P,I,D) values or None if fails
         """
+        assert type(motor_channel) == Raven.MotorChannel
         value = self.__serial.read_value(
             Raven.__MessageType.MOTOR_PID, motor_channel.value, retry
         )
@@ -290,6 +303,7 @@ class Raven:
         @retry: number of retries if command fails
         @return: True if success
         """
+        assert type(servo_channel) == Raven.ServoChannel
         if degree < -90 or degree > 90:
             return ValueError("Invalid degree")
 
@@ -306,6 +320,7 @@ class Raven:
         @retry: number of retries if command fails
         @return: number of encoder count or None if fails
         """
+        assert type(motor_channel) == Raven.MotorChannel
         value = self.__serial.read_value(
             Raven.__MessageType.ENCODER_VALUE, motor_channel.value, retry
         )
@@ -324,7 +339,9 @@ if __name__ == "__main__":
     while True:
         p, i, d = np.random.rand(3) * 1000
         print(p, i, d)
-        pid_set = raven.set_motor_pid(Raven.MotorChannel.CH5, p, i, d)
-        pid_get = raven.get_motor_pid(Raven.MotorChannel.CH5)
-        print(pid_set, pid_get)
-        time.sleep(0.001)
+        # pid_set = raven.set_motor_pid(Raven.MotorChannel.CH5, p, i, d)
+        # pid_get = raven.get_motor_pid(Raven.MotorChannel.CH5)
+        # print(pid_set, pid_get)
+        # time.sleep(0.001)
+        raven.set_servo_position(Raven.MotorChannel.CH1, 80)
+        break
