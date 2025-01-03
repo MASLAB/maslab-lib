@@ -449,4 +449,4 @@ if __name__ == "__main__":
 
     while True:
         print(imu.get_data())
-        time.sleep(0.1)
+        time.sleep(0.01)
