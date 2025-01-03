@@ -15,9 +15,10 @@ class Raven:
 
     @unique
     class MotorMode(Enum):
-        OFF = b"\x00"
-        SPEED = b"\x01"
+        DISABLE = b"\x00"
+        DIRECT = b"\x01"
         POSITION = b"\x02"
+        SPEED = b"\x03"
 
     @unique
     class ServoChannel(Enum):
@@ -29,15 +30,15 @@ class Raven:
     # Message types
     @unique
     class __MessageType(Enum):
-        NACK = 0
-        ACK = 1
-        REPLY = 2
+        SERVO_VALUE = 0
+        MOTOR_MODE = 1
+        MOTOR_PID = 2
         MOTOR_CMD = 3
-        MOTOR_MODE = 4
-        MOTOR_PID = 5
-        SERVO_VALUE = 6
-        ENCODER_VALUE = 7
-        ERROR = 8
+        MOTOR_VOLTAGE = 4
+        MOTOR_CURRENT = 5
+        ENCODER_VALUE = 6
+        MOTOR_MEAS_VOLTAGE = 7
+        MOTOR_MEAS_CURRENT = 8
 
     # Read write option
     @unique
@@ -133,7 +134,7 @@ class Raven:
             return None, None
 
         def __make_message(self, data):
-            message = self.__START + bytes([len(data), data]) + data
+            message = self.__START + bytes([len(data)]) + data
             crc = self.__crc.crc(message)
             message = message + bytes([crc])
             return message, crc
@@ -186,12 +187,9 @@ class Raven:
             Raven.__MessageType.MOTOR_MODE, motor_channel.value, retry
         )
         if value and len(value) == 1:
-            if value[0] == 0:
-                return Raven.MotorMode.OFF
-            if value[0] == 1:
-                return Raven.MotorMode.SPEED
-            if value[0] == 2:
-                return Raven.MotorMode.POSITION
+            for mode in Raven.MotorMode:
+                if value == mode:
+                    return mode
         return None
 
     def set_motor_mode(
@@ -216,7 +214,7 @@ class Raven:
         Get motor command
         @motor_channel: Raven.MotorChannel#
         @retry: number of retries if command fails
-        @return: command (rps if motor mode is speed and revolutions if motor mode is position) or None if fails
+        @return: Motor command (based on set mode) or None if fails
         """
         assert type(motor_channel) == Raven.MotorChannel
         value = self.__read_value(
@@ -230,7 +228,7 @@ class Raven:
         """
         Set motor command
         @motor_channel: Raven.MotorChannel#
-        @value: command (rps if motor mode is speed and revolutions if motor mode is position)
+        @value: command in encoder count if mode is position or encoder count/sec if mode is velocity
         @retry: number of retries if command fails
         @return: True if success
         """
