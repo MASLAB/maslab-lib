@@ -21,4 +21,4 @@ include-package-data = true
 where = ["src"]
 
 [tool.setuptools.package-data]
-imc42688 = ["*.yaml"]
+icm42688 = ["*.yaml"]
