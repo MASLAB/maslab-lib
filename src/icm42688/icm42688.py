@@ -242,11 +242,6 @@ class ICM42688:
             data_type = eval(field["type"])
             length = field["length"]
             fields.append((name, data_type, length))
-            # Init values
-            if "value" in field:
-                init_values.append(field["value"])
-            else:
-                init_values.append(0)
 
         return fields, init_values
 
