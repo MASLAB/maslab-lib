@@ -20,6 +20,5 @@ include-package-data = true
 
 [tool.setuptools.packages.find]
 where = ["src"]
-
-[tool.setuptools.package-data]
-icm42688 = ["*.yaml"]
+include = ["*"]
+namespaces = false
