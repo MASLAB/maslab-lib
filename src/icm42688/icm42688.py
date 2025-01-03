@@ -5,6 +5,9 @@ import digitalio
 # Structure
 from ctypes import BigEndianStructure, c_uint16, c_int16, c_uint8, sizeof
 
+# Math
+import numpy as np
+
 # Register parsing
 import pathlib
 import yaml
@@ -43,6 +46,7 @@ class ICM42688:
         FS125dps = 4, 125
         FS62dps5 = 5, 62.5
         FS31dps25 = 6, 31.25
+        FS15dps625 = 7, 15.625
 
     @unique
     class ACCEL_FS(Enum):
@@ -53,16 +57,21 @@ class ICM42688:
 
     @unique
     class GYRO_MODE(Enum):
-        OFF = (0,)
-        STANDBY = (1,)
-        LOWNOISE = (3,)
+        OFF = 0
+        STANDBY = 1
+        LOWNOISE = 3
 
     @unique
     class ACCEL_MODE(Enum):
-        OFF = (0,)
-        STANDBY = (1,)
-        LOWPOWER = (2,)
-        LOWNOISE = (3,)
+        OFF = 0
+        LOWPOWER = 2
+        LOWNOISE = 3
+
+    @unique
+    class UI_FILT_ORD(Enum):
+        ORD1st = 0
+        ORD2nd = 1
+        ORD3rd = 2
 
     __REG_FILE = "icm42688reg.yaml"
     __DEFAULT_ID = 0x47
@@ -88,9 +97,10 @@ class ICM42688:
             self.__bank = 5
 
         def __write_reg(self, reg, data: bytearray):
-            write_reg = bytearray([reg]) + data
             self.__cs.off()
-            self.__spi.write(write_reg)
+            for i in range(len(data)):
+                write_reg = [reg + i, data[i]]
+                self.__spi.write(write_reg)
             self.__cs.on()
 
         def __read_reg(self, reg, length):
@@ -201,25 +211,25 @@ class ICM42688:
 
         bank_num = 0
         for bank in banks:
-            for register in bank:
-                name = register["name"]
-                address = register["address"]
-                register_type = ICM42688.__REG_TYPES[register["type"]]
-                fields, init_values = ICM42688.__parse_fields(register["fields"])
-                if register_type == ICM42688.ReadRegister:
-                    init_values = []
+            if bank is not None:
+                for register in bank:
+                    name = register["name"]
+                    address = register["address"]
+                    register_type = ICM42688.__REG_TYPES[register["type"]]
+                    fields, init_values = ICM42688.__parse_fields(register["fields"])
+                    if register_type == ICM42688.ReadRegister:
+                        init_values = []
 
-                new_register = self.__create_register(
-                    name, address, register_type, bank_num, fields, init_values
-                )
+                    new_register = self.__create_register(
+                        name, address, register_type, bank_num, fields, init_values
+                    )
 
-                setattr(
-                    self,
-                    name,
-                    new_register,
-                )
-                self.__registers.append(register)
-
+                    setattr(
+                        self,
+                        name,
+                        new_register,
+                    )
+                    self.__registers.append(new_register)
             bank_num += 1
 
     @staticmethod
@@ -241,24 +251,58 @@ class ICM42688:
         return fields, init_values
 
     def begin(self):
-        self.WHO_AM_I.read()
-        id = self.WHO_AM_I.WHOAMI
-        if id != ICM42688.__DEFAULT_ID:
-            raise RuntimeError("Device not found")
+        """
+        Begin communication with the sensor and initialize the sensor settings to:
+        Gyro + accel UI filter: 3rd order
+        Gyro + accel mode: Low Noise
+        Gyro fullscale: +/-2000dps ODR: 1kHz
+        Accel fullscale: +/-16g ODR: 1kHz
+        Calibrate gyro offsets
+        """
+        # Check ID
+        try:
+            self.WHO_AM_I.read()
+            id = self.WHO_AM_I.WHOAMI
+            if id != ICM42688.__DEFAULT_ID:
+                raise RuntimeError("Device ID not matched")
+        except RuntimeError:
+            raise RuntimeError("Device not connected")
 
+        # Reset device
         self.reset()
-        self.PWR_MGMT0.GYRO_MODE = 2
-        self.PWR_MGMT0.ACCEL_MODE = 2
-        self.PWR_MGMT0.write()
-        time.sleep(0.05)
 
+        # Set filter order to 3rd order
+        self.GYRO_CONFIG1.GYRO_UI_FILT_ORD = ICM42688.UI_FILT_ORD.ORD3rd.value
+        self.GYRO_CONFIG1.write()
+        self.ACCEL_CONFIG1.ACCEL_UI_FILT_ORD = ICM42688.UI_FILT_ORD.ORD3rd.value
+        self.ACCEL_CONFIG1.write()
+
+        # Turn on sensors
+        self.PWR_MGMT0.GYRO_MODE = ICM42688.GYRO_MODE.LOWNOISE.value
+        self.PWR_MGMT0.ACCEL_MODE = ICM42688.ACCEL_MODE.LOWNOISE.value
+        self.PWR_MGMT0.write()
+        time.sleep(0.1)
+
+        # Set fullscale and ODR
         self.set_gyro_fullscale_odr(ICM42688.GYRO_FS.FS2000dps, ICM42688.ODR.ODR1kHz)
         self.set_accel_fullscale_odr(ICM42688.ACCEL_FS.FS16g, ICM42688.ODR.ODR1kHz)
 
+        # Calibrate gyro
+        self.calibrate_gyro()
+
     def reset(self):
+        """
+        Reset all settings to defaults
+        """
         self.DEVICE_CONFIG.SOFT_RESET_CONFIG = 1
         self.DEVICE_CONFIG.write()
-        time.sleep(0.001)
+        time.sleep(0.1)
+        # Read registers
+        for register in self.__registers:
+            try:
+                register.read()
+            except AttributeError:
+                pass
 
     def __sensors_off(self):
         self.prev_gyro_mode = self.PWR_MGMT0.GYRO_MODE
@@ -266,36 +310,77 @@ class ICM42688:
         self.PWR_MGMT0.GYRO_MODE = ICM42688.GYRO_MODE.OFF.value
         self.PWR_MGMT0.ACCEL_MODE = ICM42688.GYRO_MODE.OFF.value
         self.PWR_MGMT0.write()
+        time.sleep(0.1)
 
     def __sensors_resume(self):
         self.PWR_MGMT0.GYRO_MODE = self.prev_gyro_mode
         self.PWR_MGMT0.ACCEL_MODE = self.prev_accel_mode
         self.PWR_MGMT0.write()
-        time.sleep(0.05)
+        time.sleep(0.1)
 
     def set_gyro_mode(self, mode: GYRO_MODE):
+        """
+        Set gyro operation mode
+        @mode: Operation mode (OFF, STANDBY, LOWNOISE)
+        """
         self.PWR_MGMT0.GYRO_MODE = mode.value
         self.PWR_MGMT0.write()
-        time.sleep(0.05)
+        time.sleep(0.1)
 
     def set_accel_mode(self, mode: ACCEL_MODE):
+        """
+        Set accel operation mode
+        @mode: Operation mode (OFF, LOWPOWER, LOWNOISE)
+        """
         self.PWR_MGMT0.ACCEL_MODE = mode.value
         self.PWR_MGMT0.write()
-        time.sleep(0.001)
+        time.sleep(0.1)
 
     def set_gyro_fullscale_odr(self, fullscale: GYRO_FS, odr: ODR):
+        """
+        Set gyro fullscale and output data rate
+        @fullscale: +/- 15.625-2000dps
+        @odr: 12.5Hz - 32kHz
+        """
         self.gyro_fullscale = fullscale
         self.gyro_odr = odr
         self.GYRO_CONFIG0.GYRO_FS_SEL = fullscale.value[0]
         self.GYRO_CONFIG0.GYRO_ODR = odr.value
         self.GYRO_CONFIG0.write()
+        time.sleep(0.1)
 
     def set_accel_fullscale_odr(self, fullscale: ACCEL_FS, odr: ODR):
+        """
+        Set accel fullscale and output data rate
+        @fullscale: +/- 2-16g
+        @odr: 12.5Hz - 32kHz
+        """
         self.accel_fullscale = fullscale
         self.accel_odr = odr
         self.ACCEL_CONFIG0.ACCEL_FS_SEL = fullscale.value[0]
         self.ACCEL_CONFIG0.ACCEL_ODR = odr.value
         self.ACCEL_CONFIG0.write()
+        time.sleep(0.1)
+
+    def set_gyro_ui_filter_order(self, order: UI_FILT_ORD):
+        """
+        Set gyro filter order
+        @order: 1st, 2nd, 3rd
+        """
+        self.__sensors_off()
+        self.GYRO_CONFIG1.GYRO_UI_FILT_ORD = order.value
+        self.GYRO_CONFIG1.write()
+        self.__sensors_resume()
+
+    def set_accel_ui_filter_order(self, order: UI_FILT_ORD):
+        """
+        Set accel filter order
+        @order: 1st, 2nd, 3rd
+        """
+        self.__sensors_off()
+        self.ACCEL_CONFIG1.ACCEL_UI_FILT_ORD = order.value
+        self.ACCEL_CONFIG1.write()
+        self.__sensors_resume()
 
     def __accel_data_to_accel(self, accel_data):
         return self.accel_fullscale.value[1] / 32767.5 * accel_data * 9.80665
@@ -307,57 +392,48 @@ class ICM42688:
         """
         Return data in order x,y,z of acceleration(m/s) and rotation(rad/s)
         """
-        self.DATA.read()
+        self.IMU_DATA.read()
         accel = (
-            self.__accel_data_to_accel(self.DATA.ACCEL_DATA_X),
-            self.__accel_data_to_accel(self.DATA.ACCEL_DATA_Y),
-            self.__accel_data_to_accel(self.DATA.ACCEL_DATA_Z),
+            self.__accel_data_to_accel(self.IMU_DATA.ACCEL_DATA_X),
+            self.__accel_data_to_accel(self.IMU_DATA.ACCEL_DATA_Y),
+            self.__accel_data_to_accel(self.IMU_DATA.ACCEL_DATA_Z),
         )
         gyro = (
-            self.__gyro_data_to_gyro(self.DATA.GYRO_DATA_X),
-            self.__gyro_data_to_gyro(self.DATA.GYRO_DATA_Y),
-            self.__gyro_data_to_gyro(self.DATA.GYRO_DATA_Z),
+            self.__gyro_data_to_gyro(self.IMU_DATA.GYRO_DATA_X),
+            self.__gyro_data_to_gyro(self.IMU_DATA.GYRO_DATA_Y),
+            self.__gyro_data_to_gyro(self.IMU_DATA.GYRO_DATA_Z),
         )
         return accel, gyro
 
     __GYRO_OFFSET_RES = 1 / 32
-    
-    def __set_gyro_offset(self, gyro_data_reg, up_reg, down_reg):
-        gyro = self.__gyro_data_to_gyro(gyro_data_reg)
-        gyro_offset = int(gyro/ICM42688.__GYRO_OFFSET_RES)
-        setattr(up_reg) = gyro_offset >> 8
-        setattr(down_reg) = gyro_offset & 0xFF
+
+    def __set_gyro_offset(self, axis: str):
+        gyro_data_reg = getattr(self.IMU_DATA, "GYRO_DATA_" + axis)
+        gyro = -self.__gyro_data_to_gyro(gyro_data_reg) / 0.017453
+        gyro_offset = np.int16(gyro / ICM42688.__GYRO_OFFSET_RES)
+        base_register_name = "GYRO_%s_OFFUSER_" % axis
+        setattr(self.OFFSET_USER, base_register_name + "UPPER", gyro_offset >> 8)
+        setattr(self.OFFSET_USER, base_register_name + "LOWER", gyro_offset & 0xFF)
 
     def calibrate_gyro(self):
+        """
+        Calibrate gyro offset
+        """
         self.OFFSET_USER.read()
         prev_gyro_fullscale = self.gyro_fullscale
         prev_gyro_odr = self.gyro_odr
-        self.set_gyro_fullscale_odr(ICM42688.GYRO_FS.FS125dps, ICM42688.ODR.ODR1kHz)
+        self.set_gyro_fullscale_odr(ICM42688.GYRO_FS.FS15dps625, ICM42688.ODR.ODR1kHz)
         time.sleep(0.1)
         self.IMU_DATA.read()
         self.__sensors_off()
 
-        self.__set_gyro_offset(
-            self.IMU_DATA.GYRO_DATA_X, 
-            self.OFFSET_USER.GYRO_X_OFFUSER_UPPER, 
-            self.OFFSET_USER.GYRO_X_OFFSET_USER_LOWER
-        )
+        self.__set_gyro_offset("X")
+        self.__set_gyro_offset("Y")
+        self.__set_gyro_offset("Z")
 
-        self.__set_gyro_offset(
-            self.IMU_DATA.GYRO_DATA_Y, 
-            self.OFFSET_USER.GYRO_Y_OFFUSER_UPPER, 
-            self.OFFSET_USER.GYRO_Y_OFFSET_USER_LOWER
-        )
-
-        self.__set_gyro_offset(
-            self.IMU_DATA.GYRO_DATA_Z, 
-            self.OFFSET_USER.GYRO_Z_OFFUSER_UPPER, 
-            self.OFFSET_USER.GYRO_Z_OFFSET_USER_LOWER
-        )
-        
         self.OFFSET_USER.write()
-        self.set_gyro_fullscale_odr(prev_gyro_fullscale, prev_gyro_odr)
         self.__sensors_resume()
+        self.set_gyro_fullscale_odr(prev_gyro_fullscale, prev_gyro_odr)
 
 
 if __name__ == "__main__":
@@ -373,9 +449,9 @@ if __name__ == "__main__":
     imu = ICM42688(spi)
     imu.begin()
 
-    imu.set_gyro_fullscale_odr(ICM42688.GYRO_FS.FS2000dps, ICM42688.ODR.ODR1kHz)
-    imu.set_accel_fullscale_odr(ICM42688.ACCEL_FS.FS16g, ICM42688.ODR.ODR1kHz)
+    imu.set_gyro_fullscale_odr(ICM42688.GYRO_FS.FS15dps625, ICM42688.ODR.ODR1kHz)
+    imu.set_accel_fullscale_odr(ICM42688.ACCEL_FS.FS2g, ICM42688.ODR.ODR1kHz)
 
-    time.sleep(0.01)
-
-    print(imu.get_data())
+    while True:
+        print(imu.get_data())
+        time.sleep(0.1)
