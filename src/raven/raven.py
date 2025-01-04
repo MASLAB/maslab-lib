@@ -66,7 +66,7 @@ class Raven:
         */
         """
 
-        __START = 0xAA
+        __START = b"\0xAA"
 
         @unique
         class ReadWrite(Enum):
@@ -325,15 +325,15 @@ if __name__ == "__main__":
     import numpy as np
     import time
 
-    raven = Raven("COM6")
+    raven = Raven()
 
     i = 0
     while True:
-        p, i, d = np.random.rand(3) * 1000
-        print(p, i, d)
+        # p, i, d = np.random.rand(3) * 1000
+        # print(p, i, d)
         # pid_set = raven.set_motor_pid(Raven.MotorChannel.CH5, p, i, d)
         # pid_get = raven.get_motor_pid(Raven.MotorChannel.CH5)
         # print(pid_set, pid_get)
         # time.sleep(0.001)
-        raven.set_servo_position(Raven.MotorChannel.CH1, 80)
+        raven.get_motor_encoder(Raven.MotorChannel.CH1, 1)
         break
