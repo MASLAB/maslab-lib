@@ -30,20 +30,18 @@ class Raven:
     # Message types
     @unique
     class __MessageType(Enum):
-        SERVO_VALUE = 0
-        MOTOR_MODE = 1
-        MOTOR_PID = 2
-        MOTOR_CMD = 3
-        MOTOR_VOLTAGE = 4
-        MOTOR_CURRENT = 5
-        ENCODER_VALUE = 6
-        MOTOR_MEAS_VOLTAGE = 7
-        MOTOR_MEAS_CURRENT = 8
+        SERVO_VALUE = 0 << 3
+        MOTOR_MODE = 1 << 3
+        MOTOR_PID = 2 << 3
+        MOTOR_CMD = 3 << 3
+        MOTOR_VOLTAGE = 4 << 3
+        MOTOR_CURRENT = 5 << 3
+        ENCODER_VALUE = 6 << 3
+        BATTERY_VOLTAGE_VALUE = 7 << 3
+        BATTERY_CURRENT_VALUE = 8 << 3
 
-    # Read write option
     @unique
     class __ReadWrite(Enum):
-        # First bit of message type
         WRITE = 0x00
         READ = 0x80
 
@@ -53,8 +51,10 @@ class Raven:
         * Message format
         * Start: 1 byte
         *   [7-0] start byte
-        * Length: 1 byte
-        *   [7-0] data length - 1 (for required header)
+        * Header: 1 byte
+        *   [7] ack
+        *   [6-2] length
+        *   [1-0] PID (unused)
         * Data: at least 1 byte
         *   header: 1 byte
         *     [7] 0: read, 1: write
@@ -66,12 +66,7 @@ class Raven:
         */
         """
 
-        __START = b"\0xAA"
-
-        @unique
-        class ReadWrite(Enum):
-            WRITE = 0
-            READ = 1
+        __START = b"\xAA"
 
         class CRC8Encoder:
             SMBUS_POLY = 0x07
@@ -110,10 +105,10 @@ class Raven:
             else:
                 return None, None
 
-            # Length
+            # Header
             if len(data) == 1:
                 crc = self.__crc.crc(data, crc)
-                length = data[0]
+                length = (data[0] >> 2) & 0b11111
                 data = self.__serial.read(length)
             else:
                 return None, None
@@ -133,20 +128,23 @@ class Raven:
                     return message[0], message[1:]
             return None, None
 
-        def __make_message(self, data):
-            message = self.__START + bytes([len(data)]) + data
+        def __make_message(self, ack: bool, data: bytes):
+            header = len(data) << 2
+            if ack:
+                header += 0x80  # Set first bit to ack
+            message = self.__START + bytes([header]) + data
             crc = self.__crc.crc(message)
             message = message + bytes([crc])
             return message, crc
 
-        def send(self, data, retry=0):
+        def send(self, ack, data, retry=0):
             self.__serial.reset_input_buffer()
-            message, crc = self.__make_message(data)
+            message, crc = self.__make_message(ack, data)
             self.__serial.write(message)
 
-            received_crc, data = self.__read()
-            if received_crc == crc.to_bytes():
-                return data
+            received_crc, received_data = self.__read()
+            if received_crc == crc:
+                return received_data
             if retry > 0:
                 return self.send(data, retry - 1)
             else:
@@ -165,16 +163,20 @@ class Raven:
 
     @staticmethod
     def __make_message(message_type: __MessageType, rw: __ReadWrite, data):
-        header_byte = bytes([message_type.value + rw.value])
-        return header_byte + data
+        return bytes([message_type.value + rw.value]) + data
 
     def __read_value(self, message_type: __MessageType, data, retry=0):
         message = Raven.__make_message(message_type, Raven.__ReadWrite.READ, data)
-        return self.__serial.send(message, retry)
+        return self.__serial.send(True, message, retry)
 
     def __write_value(self, message_type: __MessageType, data, retry=0):
         message = Raven.__make_message(message_type, Raven.__ReadWrite.WRITE, data)
-        return self.__serial.send(message, retry) is not None
+        return self.__serial.send(True, message, retry) is not None
+    
+    def test(self):
+        for message_type in Raven.__MessageType:
+            print(message_type)
+            print(self.__read_value(message_type, Raven.MotorChannel.CH1.value))
 
     def get_motor_mode(self, motor_channel: MotorChannel, retry):
         """
@@ -305,6 +307,20 @@ class Raven:
             retry,
         )
 
+    def set_motor_encoder(self, motor_channel: MotorChannel, value: int, retry=0):
+        """
+        Set motor encoder count
+        @motor_channel: Raven.MotorChannel#
+        @value: new value for encoder
+        @retry: number of retries if command fails
+        @return: number of encoder count or None if fails
+        """
+        assert type(motor_channel) == Raven.MotorChannel
+        return self.__write_value(
+            Raven.__MessageType.ENCODER_VALUE,
+            motor_channel.value + struct.pack("i", int(value))
+        )
+
     def get_motor_encoder(self, motor_channel: MotorChannel, retry=0):
         """
         Get motor encoder count
@@ -335,5 +351,6 @@ if __name__ == "__main__":
         # pid_get = raven.get_motor_pid(Raven.MotorChannel.CH5)
         # print(pid_set, pid_get)
         # time.sleep(0.001)
-        raven.get_motor_encoder(Raven.MotorChannel.CH1, 1)
+        # print(raven.set_motor_encoder(Raven.MotorChannel.CH5, 100))
+        print(raven.get_motor_encoder(Raven.MotorChannel.CH5))
         break
