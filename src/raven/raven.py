@@ -7,11 +7,11 @@ import struct
 class Raven:
     @unique
     class MotorChannel(Enum):
-        CH1 = b"\x00"
-        CH2 = b"\x01"
-        CH3 = b"\x02"
-        CH4 = b"\x03"
-        CH5 = b"\x04"
+        CH1 = 0
+        CH2 = 1
+        CH3 = 2
+        CH4 = 3
+        CH5 = 4
 
     @unique
     class MotorMode(Enum):
@@ -22,10 +22,10 @@ class Raven:
 
     @unique
     class ServoChannel(Enum):
-        CH1 = b"\x00"
-        CH2 = b"\x01"
-        CH3 = b"\x02"
-        CH4 = b"\x03"
+        CH1 = 0
+        CH2 = 1
+        CH3 = 2
+        CH4 = 3
 
     # Message types
     @unique
@@ -33,12 +33,13 @@ class Raven:
         SERVO_VALUE = 0 << 3
         MOTOR_MODE = 1 << 3
         MOTOR_PID = 2 << 3
-        MOTOR_CMD = 3 << 3
+        MOTOR_TARGET = 3 << 3
         MOTOR_VOLTAGE = 4 << 3
         MOTOR_CURRENT = 5 << 3
         ENCODER_VALUE = 6 << 3
-        BATTERY_VOLTAGE_VALUE = 7 << 3
-        BATTERY_CURRENT_VALUE = 8 << 3
+        MOTOR_VELOCITY_VALUE = 7 << 3  # Read-only
+        MOTOR_VOLTAGE_VALUE = 8 << 3  # Read-only
+        MOTOR_CURRENT_VALUE = 9 << 3  # Read-only
 
     @unique
     class __ReadWrite(Enum):
@@ -162,35 +163,50 @@ class Raven:
         self.__serial = Raven.__RavenSerial(port, 460800, timeout)
 
     @staticmethod
-    def __make_message(message_type: __MessageType, rw: __ReadWrite, data):
-        return bytes([message_type.value + rw.value]) + data
+    def __make_message(
+        message_type: __MessageType,
+        rw: __ReadWrite,
+        channel: Enum = None,
+        data: bytes = bytes(),
+    ):
+        if channel is None:
+            channel_value = 0
+        else:
+            channel_value = channel.value
+        return bytes([message_type.value + rw.value + channel_value]) + data
 
-    def __read_value(self, message_type: __MessageType, data, retry=0):
-        message = Raven.__make_message(message_type, Raven.__ReadWrite.READ, data)
+    def __read_value(
+        self,
+        message_type: __MessageType,
+        channel: Enum = None,
+        retry=0,
+    ):
+        message = Raven.__make_message(message_type, Raven.__ReadWrite.READ, channel)
         return self.__serial.send(True, message, retry)
 
-    def __write_value(self, message_type: __MessageType, data, retry=0):
-        message = Raven.__make_message(message_type, Raven.__ReadWrite.WRITE, data)
+    def __write_value(
+        self,
+        message_type: __MessageType,
+        channel: Enum = None,
+        data: bytes = bytes(),
+        retry=0,
+    ):
+        message = Raven.__make_message(
+            message_type, Raven.__ReadWrite.WRITE, channel, data
+        )
         return self.__serial.send(True, message, retry) is not None
-    
-    def test(self):
-        for message_type in Raven.__MessageType:
-            print(message_type)
-            print(self.__read_value(message_type, Raven.MotorChannel.CH1.value))
 
-    def get_motor_mode(self, motor_channel: MotorChannel, retry):
+    def get_motor_mode(self, motor_channel: MotorChannel, retry=0):
         """
         Get motor mode
         @motor_channel: Raven.MotorChannel#
         @return: Raven.MotorMode or None if fails
         """
         assert type(motor_channel) == Raven.MotorChannel
-        value = self.__read_value(
-            Raven.__MessageType.MOTOR_MODE, motor_channel.value, retry
-        )
+        value = self.__read_value(Raven.__MessageType.MOTOR_MODE, motor_channel, retry)
         if value and len(value) == 1:
             for mode in Raven.MotorMode:
-                if value == mode:
+                if value == mode.value:
                     return mode
         return None
 
@@ -207,28 +223,29 @@ class Raven:
         assert type(motor_channel) == Raven.MotorChannel
         return self.__write_value(
             Raven.__MessageType.MOTOR_MODE,
-            motor_channel.value + motor_mode.value,
+            motor_channel,
+            motor_mode.value,
             retry,
         )
 
-    def get_motor_command(self, motor_channel: MotorChannel, retry=0):
+    def get_motor_target(self, motor_channel: MotorChannel, retry=0):
         """
-        Get motor command
+        Get motor PID target
         @motor_channel: Raven.MotorChannel#
         @retry: number of retries if command fails
-        @return: Motor command (based on set mode) or None if fails
+        @return: Motor target (based on set mode) or None if fails
         """
         assert type(motor_channel) == Raven.MotorChannel
         value = self.__read_value(
-            Raven.__MessageType.MOTOR_CMD, motor_channel.value, retry
+            Raven.__MessageType.MOTOR_TARGET, motor_channel, retry
         )
         if value and len(value) == 4:
             return struct.unpack("f", value)[0]
         return None
 
-    def set_motor_command(self, motor_channel: MotorChannel, value: float, retry=0):
+    def set_motor_target(self, motor_channel: MotorChannel, value: float, retry=0):
         """
-        Set motor command
+        Set motor PID target
         @motor_channel: Raven.MotorChannel#
         @value: command in encoder count if mode is position or encoder count/sec if mode is velocity
         @retry: number of retries if command fails
@@ -236,8 +253,9 @@ class Raven:
         """
         assert type(motor_channel) == Raven.MotorChannel
         return self.__write_value(
-            Raven.__MessageType.MOTOR_CMD,
-            motor_channel.value + struct.pack("f", value),
+            Raven.__MessageType.MOTOR_TARGET,
+            motor_channel,
+            struct.pack("f", value),
             retry,
         )
 
@@ -249,9 +267,7 @@ class Raven:
         @return: (P,I,D) values or None if fails
         """
         assert type(motor_channel) == Raven.MotorChannel
-        value = self.__read_value(
-            Raven.__MessageType.MOTOR_PID, motor_channel.value, retry
-        )
+        value = self.__read_value(Raven.__MessageType.MOTOR_PID, motor_channel, retry)
         if value and len(value) == 12:
             return struct.unpack("fff", value)
         return None
@@ -275,25 +291,62 @@ class Raven:
         """
         return self.__write_value(
             Raven.__MessageType.MOTOR_PID,
-            motor_channel.value + struct.pack("fff", p_gain, i_gain, d_gain),
+            motor_channel,
+            struct.pack("fff", p_gain, i_gain, d_gain),
             retry,
         )
 
     __SERVO_COUNT_PER_US = 168 / 51  # From raven firmware
-    __SERVO_MIN_US = 1000
-    __SERVO_MAX_US = 2000
-    __SERVO_RANGE = __SERVO_MAX_US - __SERVO_MIN_US
 
     @staticmethod
-    def __deg_to_count(deg):
-        us = ((deg + 90) / 180 * Raven.__SERVO_RANGE) + Raven.__SERVO_MIN_US
+    def __deg_to_count(deg, min_us=1000, max_us=2000):
+        us_range = max_us - min_us
+        us = ((deg + 90) / 180 * us_range) + min_us
         return int(us * Raven.__SERVO_COUNT_PER_US)
 
-    def set_servo_position(self, servo_channel: ServoChannel, degree: float, retry=0):
+    @staticmethod
+    def __count_to_deg(count, min_us=1000, max_us=2000):
+        us_range = max_us - min_us
+        us = count / Raven.__SERVO_COUNT_PER_US
+        return (us - min_us) / us_range * 180 - 90
+
+    def get_servo_position(
+        self, servo_channel: ServoChannel, min_us=1000, max_us=2000, retry=0
+    ):
+        """
+        Set servo position in degree
+        @servo_channel: Raven.ServoChannel#
+        @min_us: servo's minimum pulse in microsecond
+        @max_us: servo's maximum pulse in microsecond
+        @retry: number of retries if command fails
+        @return: servo position in degree or None if fails
+        """
+        assert type(servo_channel) == Raven.ServoChannel
+
+        value = self.__read_value(
+            Raven.__MessageType.SERVO_VALUE,
+            servo_channel,
+            retry,
+        )
+
+        if value and len(value) == 2:
+            count = struct.unpack("H", value)[0]
+            return Raven.__count_to_deg(count, min_us, max_us)
+
+    def set_servo_position(
+        self,
+        servo_channel: ServoChannel,
+        degree: float,
+        min_us=1000,
+        max_us=2000,
+        retry=0,
+    ):
         """
         Set servo position in degree
         @servo_channel: Raven.ServoChannel#
         @degree: -90 to 90
+        @min_us: servo's minimum pulse in microsecond
+        @max_us: servo's maximum pulse in microsecond
         @retry: number of retries if command fails
         @return: True if success
         """
@@ -303,9 +356,25 @@ class Raven:
 
         return self.__write_value(
             Raven.__MessageType.SERVO_VALUE,
-            servo_channel.value + struct.pack("H", Raven.__deg_to_count(degree)),
+            servo_channel,
+            struct.pack("H", Raven.__deg_to_count(degree, min_us, max_us)),
             retry,
         )
+
+    def get_motor_encoder(self, motor_channel: MotorChannel, retry=0):
+        """
+        Get motor encoder count
+        @motor_channel: Raven.MotorChannel#
+        @retry: number of retries if command fails
+        @return: number of encoder count or None if fails
+        """
+        assert type(motor_channel) == Raven.MotorChannel
+        value = self.__read_value(
+            Raven.__MessageType.ENCODER_VALUE, motor_channel, retry
+        )
+        if value and len(value) == 4:
+            return struct.unpack("i", value)[0]
+        return None
 
     def set_motor_encoder(self, motor_channel: MotorChannel, value: int, retry=0):
         """
@@ -318,23 +387,10 @@ class Raven:
         assert type(motor_channel) == Raven.MotorChannel
         return self.__write_value(
             Raven.__MessageType.ENCODER_VALUE,
-            motor_channel.value + struct.pack("i", int(value))
+            motor_channel,
+            struct.pack("i", int(value)),
+            retry,
         )
-
-    def get_motor_encoder(self, motor_channel: MotorChannel, retry=0):
-        """
-        Get motor encoder count
-        @motor_channel: Raven.MotorChannel#
-        @retry: number of retries if command fails
-        @return: number of encoder count or None if fails
-        """
-        assert type(motor_channel) == Raven.MotorChannel
-        value = self.__read_value(
-            Raven.__MessageType.ENCODER_VALUE, motor_channel.value, retry
-        )
-        if value and len(value) == 4:
-            return struct.unpack("i", value)[0]
-        return None
 
 
 if __name__ == "__main__":
@@ -345,12 +401,8 @@ if __name__ == "__main__":
 
     i = 0
     while True:
-        # p, i, d = np.random.rand(3) * 1000
-        # print(p, i, d)
-        # pid_set = raven.set_motor_pid(Raven.MotorChannel.CH5, p, i, d)
-        # pid_get = raven.get_motor_pid(Raven.MotorChannel.CH5)
-        # print(pid_set, pid_get)
-        # time.sleep(0.001)
-        # print(raven.set_motor_encoder(Raven.MotorChannel.CH5, 100))
-        print(raven.get_motor_encoder(Raven.MotorChannel.CH5))
+        print(raven.set_motor_mode(Raven.MotorChannel.CH3, Raven.MotorMode.POSITION))
+        print(raven.get_motor_mode(Raven.MotorChannel.CH3))
+        print(raven.set_motor_mode(Raven.MotorChannel.CH3, Raven.MotorMode.DISABLE))
+        print(raven.get_motor_mode(Raven.MotorChannel.CH3))
         break
