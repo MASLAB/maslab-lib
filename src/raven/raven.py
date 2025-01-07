@@ -339,7 +339,11 @@ class Raven:
         return (us - min_us) / us_range * 180 - 90
 
     def get_servo_position(
-        self, servo_channel: ServoChannel, min_us=1000, max_us=2000, retry=0
+        self,
+        servo_channel: ServoChannel,
+        min_us=1000,
+        max_us=2000,
+        retry=0,
     ):
         """
         Get servo position in degree
