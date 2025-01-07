@@ -15,10 +15,10 @@ class Raven:
 
     @unique
     class MotorMode(Enum):
-        DISABLE = b"\x00"
+        DISABLED = b"\x00"
         DIRECT = b"\x01"
         POSITION = b"\x02"
-        SPEED = b"\x03"
+        VELOCITY = b"\x03"
 
     @unique
     class ServoChannel(Enum):
@@ -147,7 +147,7 @@ class Raven:
             if received_crc == crc:
                 return received_data
             if retry > 0:
-                return self.send(data, retry - 1)
+                return self.send(ack, data, retry - 1)
             else:
                 return None
 
@@ -259,6 +259,34 @@ class Raven:
             retry,
         )
 
+    def set_motor_speed_factor(
+        self, motor_channel: MotorChannel, percent: float, reverse=False, retry=0
+    ):
+        assert type(motor_channel) == Raven.MotorChannel
+        assert percent <= 100 and percent >= 0
+        value = int(percent * 40.95)
+        if reverse:
+            value = -value
+        return self.__write_value(
+            Raven.__MessageType.MOTOR_VOLTAGE,
+            motor_channel,
+            struct.pack("h", value),
+            retry,
+        )
+
+    def set_motor_torque_factor(
+        self, motor_channel: MotorChannel, percent: float, retry=0
+    ):
+        assert type(motor_channel) == Raven.MotorChannel
+        assert percent <= 100 and percent >= 0
+        value = int(percent * 40.95)
+        return self.__write_value(
+            Raven.__MessageType.MOTOR_CURRENT,
+            motor_channel,
+            struct.pack("H", value),
+            retry,
+        )
+
     def get_motor_pid(self, motor_channel: MotorChannel, retry=0):
         """
         Get motor PID gain
@@ -314,7 +342,7 @@ class Raven:
         self, servo_channel: ServoChannel, min_us=1000, max_us=2000, retry=0
     ):
         """
-        Set servo position in degree
+        Get servo position in degree
         @servo_channel: Raven.ServoChannel#
         @min_us: servo's minimum pulse in microsecond
         @max_us: servo's maximum pulse in microsecond
@@ -400,9 +428,44 @@ if __name__ == "__main__":
     raven = Raven()
 
     i = 0
+    j = 0
+    reverse = True
+    increase = True
+    for channel in Raven.MotorChannel:
+        print(raven.set_motor_mode(channel, Raven.MotorMode.DIRECT))
+        print(raven.get_motor_mode(channel))
+        print(raven.set_motor_torque_factor(channel, 50))
+        print(raven.set_motor_encoder(channel, 0))
+
     while True:
-        print(raven.set_motor_mode(Raven.MotorChannel.CH3, Raven.MotorMode.POSITION))
-        print(raven.get_motor_mode(Raven.MotorChannel.CH3))
-        print(raven.set_motor_mode(Raven.MotorChannel.CH3, Raven.MotorMode.DISABLE))
-        print(raven.get_motor_mode(Raven.MotorChannel.CH3))
-        break
+        try:
+            if i <= 0:
+                increase = True
+                reverse = not reverse
+                j += 1
+            elif i >= 100:
+                increase = False
+
+            if increase:
+                i += 1
+            else:
+                i -= 1
+
+            for channel in Raven.MotorChannel:
+                raven.set_motor_speed_factor(channel, i, reverse)
+                print(channel)
+                print(raven.get_motor_encoder(channel))
+
+            pos = i * 0.85
+            if reverse:
+                pos = -pos
+
+            for channel in Raven.ServoChannel:
+                raven.set_servo_position(channel, pos, 500, 2500)
+
+            time.sleep(0.01)
+        except KeyboardInterrupt:
+            for channel in Raven.MotorChannel:
+                print(raven.set_motor_mode(channel, Raven.MotorMode.DISABLED))
+                print(raven.get_motor_mode(channel))
+            break
