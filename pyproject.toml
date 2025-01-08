@@ -13,6 +13,7 @@ dependencies = [
     "pyyaml",
     "adafruit-blinka",
     "numpy",
+    "pyserial",
 ]
 
 [tool.setuptools]
