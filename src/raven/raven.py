@@ -40,6 +40,7 @@ class Raven:
         MOTOR_VELOCITY_VALUE = 7 << 3  # Read-only
         MOTOR_VOLTAGE_VALUE = 8 << 3  # Read-only
         MOTOR_CURRENT_VALUE = 9 << 3  # Read-only
+        RESET = 10 << 3 # Write-only
 
     @unique
     class __ReadWrite(Enum):
@@ -161,6 +162,7 @@ class Raven:
             port = sorted(list_ports.comports())[0].device
         # Raven has fixed baud at 460800
         self.__serial = Raven.__RavenSerial(port, 460800, timeout)
+        self.reset()
 
     @staticmethod
     def __make_message(
@@ -424,6 +426,12 @@ class Raven:
             retry,
         )
 
+    def reset(self, retry=0):
+        """
+        Reset all motors' mode to DISABLED and all encoder readings to 0
+        """
+        return self.__write_value(Raven.__MessageType.RESET, retry=retry)
+
 
 if __name__ == "__main__":
     import numpy as np
@@ -469,7 +477,7 @@ if __name__ == "__main__":
 
             time.sleep(0.01)
         except KeyboardInterrupt:
-            for channel in Raven.MotorChannel:
-                print(raven.set_motor_mode(channel, Raven.MotorMode.DISABLED))
-                print(raven.get_motor_mode(channel))
+            # for channel in Raven.MotorChannel:
+            #     print(raven.set_motor_mode(channel, Raven.MotorMode.DISABLED))
+            #     print(raven.get_motor_mode(channel))
             break
