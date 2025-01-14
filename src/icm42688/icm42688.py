@@ -3,7 +3,7 @@ import busio
 import digitalio
 
 # Structure
-from ctypes import BigEndianStructure, c_uint16, c_int16, c_uint8, sizeof
+from ctypes import BigEndianStructure, c_uint16, c_int16, c_uint8, c_int8, sizeof
 
 # Math
 import numpy as np
@@ -39,21 +39,21 @@ class ICM42688:
 
     @unique
     class GYRO_FS(Enum):
-        FS2000dps = 0, 2000
-        FS1000dps = 1, 1000
-        FS500dps = 2, 500
-        FS250dps = 3, 250
-        FS125dps = 4, 125
-        FS62dps5 = 5, 62.5
-        FS31dps25 = 6, 31.25
-        FS15dps625 = 7, 15.625
+        FS2000dps = 0, 0.017453 / 16.4
+        FS1000dps = 1, 0.017453 / 32.8
+        FS500dps = 2, 0.017453 / 65.5
+        FS250dps = 3, 0.017453 / 131
+        FS125dps = 4, 0.017453 / 262
+        FS62dps5 = 5, 0.017453 / 524.3
+        FS31dps25 = 6, 0.017453 / 1048.6
+        FS15dps625 = 7, 0.017453 / 2097.2
 
     @unique
     class ACCEL_FS(Enum):
-        FS16g = 0, 16
-        FS8g = 1, 8
-        FS4g = 2, 4
-        FS2g = 3, 2
+        FS16g = 0, 9.80665 / 2048
+        FS8g = 1, 9.80665 / 4096
+        FS4g = 2, 9.80665 / 8192
+        FS2g = 3, 9.80665 / 16384
 
     @unique
     class GYRO_MODE(Enum):
@@ -81,6 +81,8 @@ class ICM42688:
 
     __REG_FILE = "icm42688reg.yaml"
     __DEFAULT_ID = 0x47
+
+    __AXES = ["X", "Y", "Z"]
 
     class __SpiDev:
         __REG_BANK_SEL = 0x76
@@ -186,6 +188,91 @@ class ICM42688:
         def __getattribute__(self, name):
             return super(ICM42688.Register, self).__getattribute__(name)
 
+    class FIFOHeader(BigEndianStructure):
+        _fields_ = [
+            ("HEADER_MSG", c_uint8, 1),
+            ("HEADER_ACCEL", c_uint8, 1),
+            ("HEADER_GYRO", c_uint8, 1),
+            ("HEADER_20", c_uint8, 1),
+            ("HEADER_TIMESTAMP_FSYNC", c_uint8, 2),
+            ("HEADER_ODR_ACCEL", c_uint8, 1),
+            ("HEADER_ODR_GYRO", c_uint8, 1),
+        ]
+
+    class FIFOPacket(BigEndianStructure):
+        def __repr__(self):
+            repr_string = ""
+            for field in self._fields_:
+                name = field[0]
+                repr_string += "%s: %s,\n" % (name, object.__getattribute__(self, name))
+            return repr_string
+
+    class FIFOPacket1(FIFOPacket):
+        _pack_ = 1
+        _fields_ = [
+            ("FIFO_HEADER", c_uint8, 8),
+            ("ACCEL_DATA_X", c_int16, 16),
+            ("ACCEL_DATA_Y", c_int16, 16),
+            ("ACCEL_DATA_Z", c_int16, 16),
+            ("TEMP_DATA", c_int8, 8),
+        ]
+
+        def __init__(self, *args, **kw):
+            super().__init__(*args, **kw)
+
+    class FIFOPacket2(FIFOPacket):
+        _pack_ = 1
+        _fields_ = [
+            ("FIFO_HEADER", c_uint8, 8),
+            ("GYRO_DATA_X", c_int16, 16),
+            ("GYRO_DATA_Y", c_int16, 16),
+            ("GYRO_DATA_Z", c_int16, 16),
+            ("TEMP_DATA", c_int8, 8),
+        ]
+
+        def __init__(self, *args, **kw):
+            super().__init__(*args, **kw)
+
+    class FIFOPacket3(FIFOPacket):
+        _pack_ = 1
+        _fields_ = [
+            ("FIFO_HEADER", c_uint8, 8),
+            ("ACCEL_DATA_X", c_int16, 16),
+            ("ACCEL_DATA_Y", c_int16, 16),
+            ("ACCEL_DATA_Z", c_int16, 16),
+            ("GYRO_DATA_X", c_int16, 16),
+            ("GYRO_DATA_Y", c_int16, 16),
+            ("GYRO_DATA_Z", c_int16, 16),
+            ("TEMP_DATA", c_int8, 8),
+            ("TIMESTAMP", c_uint16, 16),
+        ]
+
+        def __init__(self, *args, **kw):
+            super().__init__(*args, **kw)
+
+    class FIFOPacket4(FIFOPacket):
+        _pack_ = 1
+        _fields_ = [
+            ("FIFO_HEADER", c_uint8, 8),
+            ("ACCEL_DATA_X_UPPER", c_int16, 16),
+            ("ACCEL_DATA_Y_UPPER", c_int16, 16),
+            ("ACCEL_DATA_Z_UPPER", c_int16, 16),
+            ("GYRO_DATA_X_UPPER", c_int16, 16),
+            ("GYRO_DATA_Y_UPPER", c_int16, 16),
+            ("GYRO_DATA_Z_UPPER", c_int16, 16),
+            ("TEMP_DATA", c_int16, 16),
+            ("TIMESTAMP", c_uint16, 16),
+            ("ACCEL_DATA_X_LOWER", c_uint8, 4),
+            ("GYRO_DATA_X_LOWER", c_uint8, 4),
+            ("ACCEL_DATA_Y_LOWER", c_uint8, 4),
+            ("GYRO_DATA_Y_LOWER", c_uint8, 4),
+            ("ACCEL_DATA_Z_LOWER", c_uint8, 4),
+            ("GYRO_DATA_Z_LOWER", c_uint8, 4),
+        ]
+
+        def __init__(self, *args, **kw):
+            super().__init__(*args, **kw)
+
     __REG_TYPES = {
         "R": ReadRegister,
         "W": WriteRegister,
@@ -205,7 +292,7 @@ class ICM42688:
         fields,
         init_values=[],
     ):
-        return type(name, (register_type,), {"_fields_": fields})(
+        return type(name, (register_type,), {"_fields_": fields, "_pack_": 1})(
             bank, address, self.__spidev, *init_values
         )
 
@@ -324,6 +411,13 @@ class ICM42688:
         Set FIFO mode
         @mode: FIFO mode (BYPASS, STREAM_TO_FIFO, STOP_ON_FULL)
         """
+        # Statically enable temp, gyro, and acceleration for now
+        # Need to support timestamp and high resolution later
+        if mode != ICM42688.FIFO_MODE.BYPASS:
+            self.FIFO_CONFIG1.FIFO_TEMP_EN = 1
+            self.FIFO_CONFIG1.FIFO_GYRO_EN = 1
+            self.FIFO_CONFIG1.FIFO_ACCEL_EN = 1
+            self.FIFO_CONFIG1.write()
         self.FIFO_CONFIG.FIFO_MODE = mode.value
         self.FIFO_CONFIG.write()
 
@@ -333,7 +427,67 @@ class ICM42688:
 
     def get_fifo_data(self):
         length = self.get_fifo_length()
-        return self.__spidev.read_bank_reg(0, 0x30, length)
+        data = self.__spidev.read_bank_reg(0, 0x30, length)
+        return self.__parse_fifo_data(data)
+
+    def __parse_fifo_data(self, data):
+        data_length = len(data)
+        parsed_data = list()
+        i = 0
+        while i < data_length:
+            accel = None
+            gyro = None
+            temperature = None
+            time_stamp = None
+
+            header = ICM42688.FIFOHeader.from_buffer(data, i)
+            # Packet 4
+            if header.HEADER_20:
+                package_datum = ICM42688.FIFOPacket4.from_buffer(data, i)
+                i += sizeof(package_datum)
+
+            # Packet 3
+            elif header.HEADER_TIMESTAMP_FSYNC or (
+                header.HEADER_ACCEL and header.HEADER_GYRO
+            ):
+                package_datum = ICM42688.FIFOPacket3.from_buffer(data, i)
+                accel = [
+                    self.__accel_data_to_accel(
+                        getattr(package_datum, "ACCEL_DATA_" + axis)
+                    )
+                    for axis in ICM42688.__AXES
+                ]
+                gyro = [
+                    self.__gyro_data_to_gyro(
+                        getattr(package_datum, "GYRO_DATA_" + axis)
+                    )
+                    for axis in ICM42688.__AXES
+                ]
+                temperature = ICM42688.__temp_data_8_to_temp(package_datum.TEMP_DATA)
+                time_stamp = package_datum.TIMESTAMP / 1000000
+
+                i += sizeof(package_datum)
+
+            # Packet 2
+            elif header.HEADER_GYRO:
+                package_datum = ICM42688.FIFOPacket2.from_buffer(data, i)
+                i += sizeof(package_datum)
+
+            # Packet 1
+            elif header.HEADER_ACCEL:
+                package_datum = ICM42688.FIFOPacket1.from_buffer(data, i)
+                i += sizeof(package_datum)
+
+            else:
+                i += 1
+                continue
+
+            # print(package_datum)
+            # print(sizeof(package_datum))
+
+            parsed_data.append((accel, gyro, temperature, time_stamp))
+
+        return parsed_data
 
     def set_gyro_mode(self, mode: GYRO_MODE):
         """
@@ -400,26 +554,32 @@ class ICM42688:
         self.__sensors_resume()
 
     def __accel_data_to_accel(self, accel_data):
-        return self.accel_fullscale.value[1] / 32767.5 * accel_data * 9.80665
+        return self.accel_fullscale.value[1] * accel_data
 
     def __gyro_data_to_gyro(self, gyro_data):
-        return self.gyro_fullscale.value[1] / 32767.5 * gyro_data * 0.017453
+        return self.gyro_fullscale.value[1] * gyro_data
+
+    @staticmethod
+    def __temp_data_8_to_temp(temp_data):
+        return (temp_data / 2.07) + 25
+
+    @staticmethod
+    def __temp_data_16_to_temp(temp_data):
+        return (temp_data / 132.48) + 25
 
     def get_data(self):
         """
         Return data in order x,y,z of acceleration(m/s) and rotation(rad/s)
         """
         self.IMU_DATA.read()
-        accel = (
-            self.__accel_data_to_accel(self.IMU_DATA.ACCEL_DATA_X),
-            self.__accel_data_to_accel(self.IMU_DATA.ACCEL_DATA_Y),
-            self.__accel_data_to_accel(self.IMU_DATA.ACCEL_DATA_Z),
-        )
-        gyro = (
-            self.__gyro_data_to_gyro(self.IMU_DATA.GYRO_DATA_X),
-            self.__gyro_data_to_gyro(self.IMU_DATA.GYRO_DATA_Y),
-            self.__gyro_data_to_gyro(self.IMU_DATA.GYRO_DATA_Z),
-        )
+        accel = [
+            self.__accel_data_to_accel(getattr(self.IMU_DATA, "ACCEL_DATA_" + axis))
+            for axis in ICM42688.__AXES
+        ]
+        gyro = [
+            self.__gyro_data_to_gyro(getattr(self.IMU_DATA, "GYRO_DATA_" + axis))
+            for axis in ICM42688.__AXES
+        ]
         return accel, gyro
 
     __GYRO_OFFSET_RES = 1 / 32
@@ -469,12 +629,9 @@ if __name__ == "__main__":
     imu.set_gyro_fullscale_odr(ICM42688.GYRO_FS.FS15dps625, ICM42688.ODR.ODR1kHz)
     imu.set_accel_fullscale_odr(ICM42688.ACCEL_FS.FS2g, ICM42688.ODR.ODR1kHz)
 
-    # while True:
-    #     print(imu.get_data())
-    #     time.sleep(0.01)
-
     imu.set_fifo_mode(ICM42688.FIFO_MODE.STREAM_TO_FIFO)
 
     while True:
-        print(imu.get_fifo_length())
-        print(imu.get_fifo_data())
+        for datum in imu.get_fifo_data():
+            print(datum)
+        time.sleep(2)
