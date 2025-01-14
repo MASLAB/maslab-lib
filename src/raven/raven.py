@@ -164,6 +164,9 @@ class Raven:
         self.__serial = Raven.__RavenSerial(port, 460800, timeout)
         self.reset()
 
+    def __del__(self):
+        self.reset()
+
     @staticmethod
     def __make_message(
         message_type: __MessageType,
@@ -474,85 +477,44 @@ if __name__ == "__main__":
 
     raven = Raven()
 
-    # Direct and servo test
-    i = 0
-    j = 0
-    reverse = True
-    increase = True
-    for channel in Raven.MotorChannel:
-        print(raven.set_motor_mode(channel, Raven.MotorMode.DIRECT))
-        print(raven.get_motor_mode(channel))
-        print(raven.set_motor_torque_factor(channel, 50))
-        print(raven.set_motor_encoder(channel, 0))
+    # Velocity test
 
+    channel1 = Raven.MotorChannel.CH1
+    channel3 = Raven.MotorChannel.CH3
+
+    # raven.set_motor_mode(channel1, Raven.MotorMode.VELOCITY)
+    # raven.set_motor_mode(channel3, Raven.MotorMode.VELOCITY)
+    # raven.set_motor_pid(channel1, 0, 5, 1)
+    # raven.set_motor_pid(channel3, 0, 5, 1)
+    # raven.set_motor_target(channel1, -4000)
+    # raven.set_motor_target(channel3, 4000)
+
+    raven.set_motor_mode(channel1, Raven.MotorMode.DIRECT)
+    raven.set_motor_mode(channel3, Raven.MotorMode.DIRECT)
+    raven.set_motor_torque_factor(channel1, 100)
+    raven.set_motor_torque_factor(channel3, 100)
+    raven.set_motor_speed_factor(channel1, 100, reverse=True)
+    raven.set_motor_speed_factor(channel3, 100, reverse=False)
+
+    current_time = time.time()
+    current_encoder = raven.get_motor_encoder(channel1)
     while True:
         try:
-            if i <= 0:
-                increase = True
-                reverse = not reverse
-                j += 1
-            elif i >= 100:
-                increase = False
-
-            if increase:
-                i += 1
-            else:
-                i -= 1
-
-            for channel in Raven.MotorChannel:
-                raven.set_motor_speed_factor(channel, i, reverse)
-                print(channel)
-                print(raven.get_motor_encoder(channel))
-                print(raven.get_motor_velocity(channel))
-
-            pos = i * 0.85
-            if reverse:
-                pos = -pos
-
-            for channel in Raven.ServoChannel:
-                raven.set_servo_position(channel, pos, 500, 2500)
-
-            time.sleep(0.01)
-        except KeyboardInterrupt:
-            raven.reset()
+            new_time = time.time()
+            new_encoder = raven.get_motor_encoder(channel1)
+            raven_vel = raven.get_motor_velocity(channel1)
+            cal_vel = (new_encoder - current_encoder) / (new_time - current_time)
+            print("Raven Ecd:", new_encoder)
+            print("Raven Vel:", raven_vel)
+            print("Calc Vel: ", cal_vel)
+            print("Diff:", raven_vel - cal_vel)
+            current_time = new_time
+            current_encoder = new_encoder
+            time.sleep(0.1)
+        except:
+            # raven.set_motor_mode(channel1, Raven.MotorMode.DISABLE)
+            # raven.set_motor_mode(channel3, Raven.MotorMode.DISABLE)
             time.sleep(1)
             break
 
-    # # Position test
-    # for channel in Raven.MotorChannel:
-    #     print(raven.set_motor_encoder(channel, 0))
-    #     print(raven.set_motor_mode(channel, Raven.MotorMode.POSITION))
-    #     print(raven.set_motor_torque_factor(channel, 100))
-    #     print(raven.get_motor_mode(channel))
-    #     print(raven.set_motor_pid(channel, 1000, 10, 0))
-
-    # i = 0
-    # j = 0
-    # reverse = True
-    # increase = True
-    # while True:
-    #     try:
-    #         if i <= 0:
-    #             increase = True
-    #             reverse = not reverse
-    #             j += 1
-    #         elif i >= 4400:
-    #             increase = False
-
-    #         if increase:
-    #             i += 10
-    #         else:
-    #             i -= 10
-
-    #         target = int(i)
-    #         print(target)
-    #         for channel in Raven.MotorChannel:
-    #             raven.set_motor_target(channel, target)
-    #             print(channel)
-    #             print(raven.get_motor_encoder(channel))
-
-    #         time.sleep(0.1)
-    #     except KeyboardInterrupt:
-    #         raven.reset()
-    #         time.sleep(1)
-    #         break
+    
