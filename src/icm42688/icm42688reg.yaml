@@ -28,6 +28,19 @@
       - name: SOFT_RESET_CONFIG
         type: c_uint8
         length: 1
+
+  - name: FIFO_CONFIG
+    address: 0x16
+    type: R/W
+    fields:
+      # FIFO mode setting
+      - name: FIFO_MODE
+        type: c_uint8
+        length: 2
+      # Reserved field
+      - name: RESV
+        type: c_uint8
+        length: 6
   
   - name: TEMP_DATA
     address: 0x1D
@@ -129,6 +142,15 @@
       # Z gyroscope data
       - name: GYRO_DATA_Z
         type: c_int16
+        length: 16
+  
+  - name: FIFO_COUNT
+    address: 0x2E
+    type: R
+    fields:
+      # FIFO count
+      - name: FIFO_COUNT
+        type: c_uint16
         length: 16
   
   - name: PWR_MGMT0
@@ -240,6 +262,66 @@
       - name: RESV0
         type: c_uint8
         length: 1
+  
+  - name: FIFO_CONFIG1
+    address: 0x5F
+    type: R/W
+    fields:
+      # Reserved field
+      - name: RESV
+        type: c_uint8
+        length: 1
+      # FIFO resume partial read setting
+      - name: FIFO_RESUME_PARTIAL_RD
+        type: c_uint8
+        length: 1
+      # FIFO water mark interrupt enable
+      - name: FIFO_WM_GT_TH
+        type: c_uint8
+        length: 1
+      # FIFO high resolution enable
+      - name: FIFO_HIRES_EN
+        type: c_uint8
+        length: 1
+      # FIFO FSYNC enable
+      - name: FIFO_TMST_FSYNC_EN
+        type: c_uint8
+        length: 1
+      # FIFO temperature enable
+      - name: FIFO_TEMP_EN
+        type: c_uint8
+        length: 1
+      # FIFO gyroscope enable
+      - name: FIFO_GYRO_EN
+        type: c_uint8
+        length: 1
+      # FIFO accelerometer enable
+      - name: FIFO_ACCEL_EN
+        type: c_uint8
+        length: 1
+  
+  - name: FIFO_CONFIG2
+    address: 0x60
+    type: R/W
+    fields:
+      # FIFO watermark level lower bits
+      - name: FIFO_WM
+        type: c_uint8
+        length: 8
+
+  - name: FIFO_CONFIG3
+    address: 0x61
+    type: R/W
+    fields:
+      # Reserved field
+      - name: RESV
+        type: c_uint8
+        length: 4
+      # FIFO watermark level upper bits
+      - name: FIFO_WM
+        type: c_uint8
+        length: 4
+
 
   - name: FSYNC_CONFIG
     address: 0x62

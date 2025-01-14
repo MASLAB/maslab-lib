@@ -59,19 +59,25 @@ class ICM42688:
     class GYRO_MODE(Enum):
         OFF = 0
         STANDBY = 1
-        LOWNOISE = 3
+        LOW_NOISE = 3
 
     @unique
     class ACCEL_MODE(Enum):
         OFF = 0
-        LOWPOWER = 2
-        LOWNOISE = 3
+        LOW_POWER = 2
+        LOW_NOISE = 3
 
     @unique
     class UI_FILT_ORD(Enum):
         ORD1st = 0
         ORD2nd = 1
         ORD3rd = 2
+
+    @unique
+    class FIFO_MODE(Enum):
+        BYPASS = 0
+        STREAM_TO_FIFO = 1
+        STOP_ON_FULL = 2
 
     __REG_FILE = "icm42688reg.yaml"
     __DEFAULT_ID = 0x47
@@ -273,8 +279,8 @@ class ICM42688:
         self.ACCEL_CONFIG1.write()
 
         # Turn on sensors
-        self.PWR_MGMT0.GYRO_MODE = ICM42688.GYRO_MODE.LOWNOISE.value
-        self.PWR_MGMT0.ACCEL_MODE = ICM42688.ACCEL_MODE.LOWNOISE.value
+        self.PWR_MGMT0.GYRO_MODE = ICM42688.GYRO_MODE.LOW_NOISE.value
+        self.PWR_MGMT0.ACCEL_MODE = ICM42688.ACCEL_MODE.LOW_NOISE.value
         self.PWR_MGMT0.write()
         time.sleep(0.1)
 
@@ -313,10 +319,26 @@ class ICM42688:
         self.PWR_MGMT0.write()
         time.sleep(0.1)
 
+    def set_fifo_mode(self, mode: FIFO_MODE):
+        """
+        Set FIFO mode
+        @mode: FIFO mode (BYPASS, STREAM_TO_FIFO, STOP_ON_FULL)
+        """
+        self.FIFO_CONFIG.FIFO_MODE = mode.value
+        self.FIFO_CONFIG.write()
+
+    def get_fifo_length(self):
+        self.FIFO_COUNT.read()
+        return self.FIFO_COUNT.FIFO_COUNT
+
+    def get_fifo_data(self):
+        length = self.get_fifo_length()
+        return self.__spidev.read_bank_reg(0, 0x30, length)
+
     def set_gyro_mode(self, mode: GYRO_MODE):
         """
         Set gyro operation mode
-        @mode: Operation mode (OFF, STANDBY, LOWNOISE)
+        @mode: Operation mode (OFF, STANDBY, LOW_NOISE)
         """
         self.PWR_MGMT0.GYRO_MODE = mode.value
         self.PWR_MGMT0.write()
@@ -325,7 +347,7 @@ class ICM42688:
     def set_accel_mode(self, mode: ACCEL_MODE):
         """
         Set accel operation mode
-        @mode: Operation mode (OFF, LOWPOWER, LOWNOISE)
+        @mode: Operation mode (OFF, LOW_POWER, LOW_NOISE)
         """
         self.PWR_MGMT0.ACCEL_MODE = mode.value
         self.PWR_MGMT0.write()
@@ -447,6 +469,12 @@ if __name__ == "__main__":
     imu.set_gyro_fullscale_odr(ICM42688.GYRO_FS.FS15dps625, ICM42688.ODR.ODR1kHz)
     imu.set_accel_fullscale_odr(ICM42688.ACCEL_FS.FS2g, ICM42688.ODR.ODR1kHz)
 
+    # while True:
+    #     print(imu.get_data())
+    #     time.sleep(0.01)
+
+    imu.set_fifo_mode(ICM42688.FIFO_MODE.STREAM_TO_FIFO)
+
     while True:
-        print(imu.get_data())
-        time.sleep(0.01)
+        print(imu.get_fifo_length())
+        print(imu.get_fifo_data())
