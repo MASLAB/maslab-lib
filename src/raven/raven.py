@@ -341,7 +341,7 @@ class Raven:
         """
         assert type(motor_channel) == Raven.MotorChannel
         value = self.__read_value(Raven.__MessageType.MOTOR_PID, motor_channel, retry)
-        if value and len(value) == 12:
+        if value and len(value) == 16:
             p, i, d, sat = struct.unpack("ffff", value)
             return (
                 p,
@@ -524,6 +524,7 @@ if __name__ == "__main__":
     raven.set_motor_max_current(channel3, 1.5)
     raven.set_motor_pid(channel1, 0, 5, 1, 100)
     raven.set_motor_pid(channel3, 0, 5, 1, 25)
+    print(raven.get_motor_pid(channel3))
     raven.set_motor_target(channel1, -4000)
     raven.set_motor_target(channel3, 2300)
 
