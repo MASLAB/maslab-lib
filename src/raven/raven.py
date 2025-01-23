@@ -226,26 +226,12 @@ class Raven:
         @return: True if success
         """
         assert type(motor_channel) == Raven.MotorChannel
-        mode_written = self.__write_value(
+        return self.__write_value(
             Raven.__MessageType.MOTOR_MODE,
             motor_channel,
             motor_mode.value,
             retry,
         )
-
-        if mode_written:
-            if (
-                motor_mode == Raven.MotorMode.POSITION
-                or motor_mode == Raven.MotorMode.VELOCITY
-            ):
-                # Also allow max torque for control
-                return self.set_motor_torque_factor(
-                    motor_channel, 100, retry
-                )  
-            else:
-                return True
-
-        return False
 
     def get_motor_target(self, motor_channel: MotorChannel, retry=0):
         """
@@ -285,6 +271,13 @@ class Raven:
     def set_motor_speed_factor(
         self, motor_channel: MotorChannel, percent: float, reverse=False, retry=0
     ):
+        """
+        Set motor speed factor (percent of battery voltage)
+        @motor_channel: Raven.MotorChannel#
+        @percent: percent of max speed
+        @retry: number of retries if command fails
+        @return: True if success
+        """
         assert type(motor_channel) == Raven.MotorChannel
         assert percent <= 100 and percent >= 0
         value = int(percent * Raven.__MOTOR_MAX_VALUE_PERCENT)
@@ -300,6 +293,14 @@ class Raven:
     def set_motor_torque_factor(
         self, motor_channel: MotorChannel, percent: float, retry=0
     ):
+        """
+        Set motor torque factor (percent of max current = 6.5 A)
+        Effectively the same as set_motor_max_current
+        @motor_channel: Raven.MotorChannel#
+        @percent: percent of max torque
+        @retry: number of retries if command fails
+        @return: True if success
+        """
         assert type(motor_channel) == Raven.MotorChannel
         assert percent <= 100 and percent >= 0
         value = int(percent * Raven.__MOTOR_MAX_VALUE_PERCENT)
@@ -308,6 +309,24 @@ class Raven:
             motor_channel,
             struct.pack("H", value),
             retry,
+        )
+
+    __MOTOR_MAX_CURRENT = 6.5
+
+    def set_motor_max_current(
+        self, motor_channel: MotorChannel, current: float, retry=0
+    ):
+        """
+        Set motor maximum current (up to 6.5 A).
+        Effectively the same as set_motor_torque_factor
+        @motor_channel: Raven.MotorChannel#
+        @current: Maximum current in A
+        @retry: number of retries if command fails
+        @return: True if success
+        """
+        assert current >= 0 and current < Raven.__MOTOR_MAX_CURRENT
+        return self.set_motor_torque_factor(
+            motor_channel, current / Raven.__MOTOR_MAX_CURRENT * 100.0, retry
         )
 
     __PID_FREQ = 1000  # Raven PID frequency
@@ -347,7 +366,7 @@ class Raven:
         @p_gain: P gain value
         @i_gain: I gain value
         @d_gain: D gain value
-        @percent: Percent of max speed
+        @percent: Percent of effort (reduce speed)
         @retry: number of retries if command fails
         @return: True if success
         """
@@ -499,27 +518,29 @@ if __name__ == "__main__":
     channel1 = Raven.MotorChannel.CH1
     channel3 = Raven.MotorChannel.CH3
 
-    # raven.set_motor_mode(channel1, Raven.MotorMode.VELOCITY)
-    # raven.set_motor_mode(channel3, Raven.MotorMode.VELOCITY)
-    # raven.set_motor_pid(channel1, 0, 5, 1)
-    # raven.set_motor_pid(channel3, 0, 5, 1)
-    # raven.set_motor_target(channel1, -4000)
-    # raven.set_motor_target(channel3, 4000)
+    raven.set_motor_mode(channel1, Raven.MotorMode.VELOCITY)
+    raven.set_motor_mode(channel3, Raven.MotorMode.VELOCITY)
+    raven.set_motor_torque_factor(channel1, 10)
+    raven.set_motor_max_current(channel3, 1.5)
+    raven.set_motor_pid(channel1, 0, 5, 1, 100)
+    raven.set_motor_pid(channel3, 0, 5, 1, 25)
+    raven.set_motor_target(channel1, -4000)
+    raven.set_motor_target(channel3, 2300)
 
-    raven.set_motor_mode(channel1, Raven.MotorMode.DIRECT)
-    raven.set_motor_mode(channel3, Raven.MotorMode.DIRECT)
-    raven.set_motor_torque_factor(channel1, 100)
-    raven.set_motor_torque_factor(channel3, 100)
-    raven.set_motor_speed_factor(channel1, 100, reverse=True)
-    raven.set_motor_speed_factor(channel3, 100, reverse=False)
+    # raven.set_motor_mode(channel1, Raven.MotorMode.DIRECT)
+    # raven.set_motor_mode(channel3, Raven.MotorMode.DIRECT)
+    # raven.set_motor_torque_factor(channel1, 100)
+    # raven.set_motor_torque_factor(channel3, 100)
+    # raven.set_motor_speed_factor(channel1, 100, reverse=True)
+    # raven.set_motor_speed_factor(channel3, 100, reverse=False)
 
     current_time = time.time()
-    current_encoder = raven.get_motor_encoder(channel1)
+    current_encoder = raven.get_motor_encoder(channel3)
     while True:
         try:
             new_time = time.time()
-            new_encoder = raven.get_motor_encoder(channel1)
-            raven_vel = raven.get_motor_velocity(channel1)
+            new_encoder = raven.get_motor_encoder(channel3)
+            raven_vel = raven.get_motor_velocity(channel3)
             cal_vel = (new_encoder - current_encoder) / (new_time - current_time)
             print("Raven Ecd:", new_encoder)
             print("Raven Vel:", raven_vel)
