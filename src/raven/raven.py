@@ -278,12 +278,16 @@ class Raven:
             retry,
         )
 
+    __MOTOR_MAX_VALUE = 4095
+    __MOTOR_MAX_VALUE_PERCENT = __MOTOR_MAX_VALUE / 100.0
+    __MOTOR_MAX_PERCENT_VALUE = 1.0 / __MOTOR_MAX_VALUE_PERCENT
+
     def set_motor_speed_factor(
         self, motor_channel: MotorChannel, percent: float, reverse=False, retry=0
     ):
         assert type(motor_channel) == Raven.MotorChannel
         assert percent <= 100 and percent >= 0
-        value = int(percent * 40.95)
+        value = int(percent * Raven.__MOTOR_MAX_VALUE_PERCENT)
         if reverse:
             value = -value
         return self.__write_value(
@@ -298,7 +302,7 @@ class Raven:
     ):
         assert type(motor_channel) == Raven.MotorChannel
         assert percent <= 100 and percent >= 0
-        value = int(percent * 40.95)
+        value = int(percent * Raven.__MOTOR_MAX_VALUE_PERCENT)
         return self.__write_value(
             Raven.__MessageType.MOTOR_CURRENT,
             motor_channel,
@@ -306,7 +310,7 @@ class Raven:
             retry,
         )
 
-    __PID_FREQ = 5000  # Raven PID frequency
+    __PID_FREQ = 1000  # Raven PID frequency
     __PID_DT = 1 / __PID_FREQ
 
     def get_motor_pid(self, motor_channel: MotorChannel, retry=0):
@@ -314,13 +318,18 @@ class Raven:
         Get motor PID gain
         @motor_channel: Raven.MotorChannel#
         @retry: number of retries if command fails
-        @return: (P,I,D) values or None if fails
+        @return: (P,I,D,Percent) values or None if fails
         """
         assert type(motor_channel) == Raven.MotorChannel
         value = self.__read_value(Raven.__MessageType.MOTOR_PID, motor_channel, retry)
         if value and len(value) == 12:
-            p, i, d = struct.unpack("fff", value)
-            return (p, i * Raven.__PID_FREQ, d * Raven.__PID_DT)
+            p, i, d, sat = struct.unpack("ffff", value)
+            return (
+                p,
+                i * Raven.__PID_FREQ,
+                d * Raven.__PID_DT,
+                sat * Raven.__MOTOR_MAX_PERCENT_VALUE,
+            )
         return None
 
     def set_motor_pid(
@@ -329,6 +338,7 @@ class Raven:
         p_gain: float,
         i_gain: float,
         d_gain: float,
+        percent: float = 100,
         retry=0,
     ):
         """
@@ -337,14 +347,21 @@ class Raven:
         @p_gain: P gain value
         @i_gain: I gain value
         @d_gain: D gain value
+        @percent: Percent of max speed
         @retry: number of retries if command fails
         @return: True if success
         """
+        assert percent <= 100 and percent >= 0
+        sat = float(percent * Raven.__MOTOR_MAX_VALUE_PERCENT)
         return self.__write_value(
             Raven.__MessageType.MOTOR_PID,
             motor_channel,
             struct.pack(
-                "fff", p_gain, i_gain * Raven.__PID_DT, d_gain * Raven.__PID_FREQ
+                "ffff",
+                p_gain,
+                i_gain * Raven.__PID_DT,
+                d_gain * Raven.__PID_FREQ,
+                sat,
             ),
             retry,
         )
@@ -516,5 +533,3 @@ if __name__ == "__main__":
             # raven.set_motor_mode(channel3, Raven.MotorMode.DISABLE)
             time.sleep(1)
             break
-
-    
