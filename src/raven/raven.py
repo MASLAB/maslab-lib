@@ -454,6 +454,20 @@ class Raven:
             retry,
         )
 
+    def set_servo_off(self, servo_channel: ServoChannel, retry=0):
+        """
+        Turn off servo
+        @servo_channel: Raven.ServoChannel#
+        @retry: number of retries if command fails
+        @return: True if success
+        """
+        self.__write_value(
+            Raven.__MessageType.SERVO_VALUE,
+            servo_channel,
+            struct.pack("H", 0),
+            retry,
+        )
+
     def get_motor_encoder(self, motor_channel: MotorChannel, retry=0):
         """
         Get motor encoder count
@@ -518,15 +532,15 @@ if __name__ == "__main__":
     channel1 = Raven.MotorChannel.CH1
     channel3 = Raven.MotorChannel.CH3
 
-    raven.set_motor_mode(channel1, Raven.MotorMode.VELOCITY)
-    raven.set_motor_mode(channel3, Raven.MotorMode.VELOCITY)
-    raven.set_motor_torque_factor(channel1, 10)
-    raven.set_motor_max_current(channel3, 1.5)
-    raven.set_motor_pid(channel1, 0, 5, 1, 100)
-    raven.set_motor_pid(channel3, 0, 5, 1, 25)
-    print(raven.get_motor_pid(channel3))
-    raven.set_motor_target(channel1, -4000)
-    raven.set_motor_target(channel3, 2300)
+    # raven.set_motor_mode(channel1, Raven.MotorMode.VELOCITY)
+    # raven.set_motor_mode(channel3, Raven.MotorMode.VELOCITY)
+    # raven.set_motor_torque_factor(channel1, 10)
+    # raven.set_motor_max_current(channel3, 1.5)
+    # raven.set_motor_pid(channel1, 0, 5, 1, 25)
+    # raven.set_motor_pid(channel3, 0, 5, 1, 25)
+    # print(raven.get_motor_pid(channel3))
+    # raven.set_motor_target(channel1, -4000)
+    # raven.set_motor_target(channel3, 2300)
 
     # raven.set_motor_mode(channel1, Raven.MotorMode.DIRECT)
     # raven.set_motor_mode(channel3, Raven.MotorMode.DIRECT)
@@ -534,6 +548,16 @@ if __name__ == "__main__":
     # raven.set_motor_torque_factor(channel3, 100)
     # raven.set_motor_speed_factor(channel1, 100, reverse=True)
     # raven.set_motor_speed_factor(channel3, 100, reverse=False)
+
+    raven.set_motor_mode(channel1, Raven.MotorMode.POSITION)
+    raven.set_motor_mode(channel3, Raven.MotorMode.POSITION)
+    raven.set_motor_torque_factor(channel1, 10)
+    raven.set_motor_max_current(channel3, 1.5)
+    raven.set_motor_pid(channel1, 30, 10, 2, 50)
+    raven.set_motor_pid(channel3, 30, 10, 2, 50)
+    print(raven.get_motor_pid(channel3))
+    raven.set_motor_target(channel1, -640)
+    raven.set_motor_target(channel3, 640)
 
     current_time = time.time()
     current_encoder = raven.get_motor_encoder(channel3)
