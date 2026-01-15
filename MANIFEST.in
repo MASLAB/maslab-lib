@@ -1,1 +1,2 @@
 include src/icm42688/*.yaml
+include src/streamer/index.html

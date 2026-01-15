@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;1,100;1,200;1,300;1,400;1,500;1,600;1,700&family=IBM+Plex+Sans:ital,wght@0,100..700;1,100..700&display=swap" rel="stylesheet">
+        <title>MASLAB Streamer</title>
+    </head>
+    <body>
+        <style>
+            html, body {
+                margin: 0;
+                padding: 0;
+            }
+            body {
+                font-family: 'IBM Plex Sans', sans-serif;
+                background-color: #f0f0f0;
+                padding: 20px;
+            }
+            .grid {
+                display: grid;
+                grid-template-columns: 1fr 1fr 1fr;
+                gap: 20px;
+            }
+            .container {
+                background-color: white;
+                border-radius: 8px;
+                padding: 20px;
+                border: 1px solid #ddd;
+            }
+            h1 {
+                color: #19656c;
+            }
+            h2 {
+                color: #c26133;
+                padding: 0;
+                margin: 0 0 10px 0;
+            }
+            p {
+                margin: 2px 0;
+            }
+            #stream_image, #data, #odometry-canvas {
+                width: 100%;
+                height: auto;
+                border-radius: 4px;
+                border: 1px solid #ddd;
+            }
+            #data {
+                padding: 10px;
+                background-color: #f9f9f9;
+                box-sizing: border-box;
+            }
+        </style>
+        <h1>/maslab<span style="color:#c26133">/streamer</span></h1>
+        <div class="grid">
+            <div class="container">
+                <h2>JSON Data</h2>
+                <div id="data"></div>
+                <br>
+                <label for="raw">
+                    <input type="checkbox" id="raw" name="raw" onchange="raw_json = this.checked">
+                    Raw JSON
+                </label>
+            </div>
+            <div class="container">
+                <h2>Vision Stream</h2>
+                <img id="stream_image" src="/stream_img" alt="Stream Image" />
+            </div>
+            <div class="container">
+                <h2>Odometry</h2>
+                <canvas id="odometry-canvas"></canvas>
+            </div>  
+        </div>
+        <script>
+            const dataDiv = document.getElementById('data');
+            const eventSource = new EventSource('/stream_data');
+            let raw_json = false;
+            function renderSingle(key, value, indent=0) {
+                if (typeof value === 'object') {
+                    dataDiv.innerHTML += `<p style="margin-left: ${indent * 20}px;"><strong>${key}</strong></p>`;
+                    for (const subKey in value) {
+                        if (value.hasOwnProperty(subKey)) {
+                            renderSingle(subKey, value[subKey], indent + 1);
+                        }
+                    }
+                } else {
+                    dataDiv.innerHTML += `<p style="margin-left: ${indent * 20}px;"><strong>${key}</strong> ${value}</p>`;
+                }
+            }
+            eventSource.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                dataDiv.innerHTML = '';
+                if (raw_json) {
+                    dataDiv.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+                    return;
+                }
+                for (const key in data) {
+                    if (data.hasOwnProperty(key)) {
+                        renderSingle(key, data[key]);
+                    }
+                }
+            };
+
+            pastTrajectory = [];
+            let panOffset = { x: 0, y: 0 };
+            let zoomLevel = 0.1;
+            let isDragging = false;
+            let dragStart = { x: 0, y: 0 };
+
+            let lastOdometry = {
+                x: 0,
+                y: 0,
+                theta: 0,
+                circles: []
+            }
+
+            function renderCanvas(lastOdometry) {
+                const {x, y, theta, circles, lines} = lastOdometry;
+
+                const ctx = odometryCanvas.getContext('2d');
+                const width = odometryCanvas.width / zoomLevel;
+                const height = odometryCanvas.height / zoomLevel;
+
+                ctx.clearRect(0, 0, width, height);
+                ctx.fillStyle = '#f0f0f0';
+                ctx.fillRect(0, 0, width, height);
+
+                // Apply transformations
+                ctx.save();
+                ctx.translate(panOffset.x, panOffset.y);
+                ctx.scale(zoomLevel, zoomLevel);
+
+                // Reference rectangle (-180, 180)
+                ctx.strokeStyle = '#ddd';
+                ctx.lineWidth = 10;
+                ctx.strokeRect(width / 2 - 180 * 10, height / 2 - 180 * 10, 360 * 10, 360 * 10);
+                ctx.stroke();
+                // text
+                ctx.fillStyle = '#888';
+                ctx.font = '100px IBM Plex Mono';
+                ctx.fillText('(-180, 180)', width / 2 - 180 * 10, height / 2 + 180 * 10 + 5);
+                ctx.fillText('(180, 180)', width / 2 + 180 * 10 - 60, height / 2 + 180 * 10 + 5);
+                ctx.fillText('(-180, -180)', width / 2 - 180 * 10, height / 2 - 180 * 10 + 15);
+                ctx.fillText('(180, -180)', width / 2 + 180 * 10 - 60, height / 2 - 180 * 10 + 15);
+
+                // Past trajectory
+                pastTrajectory.push({x: x, y: y});
+                ctx.beginPath();
+                ctx.strokeStyle = '#c26133';
+                ctx.lineWidth = 10;
+                for (const point of pastTrajectory) {
+                    const px = width / 2 + point.x * 10; // Scale for visibility
+                    const py = height / 2 - point.y * 10; // Invert y-axis
+                    ctx.lineTo(px, py);
+                }
+                ctx.stroke();
+
+                // Draw the current position (robot is a triangle)
+                const robotSize = 100;
+                const robotX = width / 2 + x * 10;
+                const robotY = height / 2 - y * 10;
+                ctx.save();
+                ctx.translate(robotX, robotY);
+                ctx.rotate(-theta * Math.PI / 180);
+                ctx.beginPath();
+                ctx.moveTo(robotSize, 0);
+                ctx.lineTo(-robotSize / 2, robotSize / 2);
+                ctx.lineTo(-robotSize / 2, -robotSize / 2);
+                ctx.closePath();
+                ctx.fillStyle = '#19656c';
+                ctx.fill();
+                ctx.restore();
+
+                // Draw circles
+                for (circle of circles) {
+                    const cx = width / 2 + circle.x * 10;
+                    const cy = height / 2 - circle.y * 10;
+                    const color = circle.c || '#888';
+                    ctx.fillStyle = color;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, 100, 0, 2 * Math.PI);
+                    ctx.fill();
+                }
+                for (line of lines) {
+                    const x1 = width / 2 + line.x1 * 10;
+                    const y1 = height / 2 - line.y1 * 10;
+                    const x2 = width / 2 + line.x2 * 10;
+                    const y2 = height / 2 - line.y2 * 10;
+                    const color = line.c || '#888';
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = 10;
+                    ctx.beginPath();
+                    ctx.moveTo(x1, y1);
+                    ctx.lineTo(x2, y2);
+                    ctx.stroke();
+                }
+                ctx.restore();
+            }
+
+            odometryCanvas = document.getElementById('odometry-canvas');
+            // Set canvas dimensions to match display size
+            odometryCanvas.width = odometryCanvas.offsetWidth;
+            odometryCanvas.height = odometryCanvas.offsetWidth; // Make it square
+            
+            const odometryCtx = odometryCanvas.getContext('2d');
+            
+            // Mouse event handlers for panning
+            odometryCanvas.addEventListener('mousedown', (e) => {
+                isDragging = true;
+                dragStart = { x: e.offsetX - panOffset.x, y: e.offsetY - panOffset.y };
+                odometryCanvas.style.cursor = 'grabbing';
+            });
+
+            odometryCanvas.addEventListener('mousemove', (e) => {
+                if (isDragging) {
+                    panOffset.x = e.offsetX - dragStart.x;
+                    panOffset.y = e.offsetY - dragStart.y;
+                    renderCanvas(lastOdometry);
+                }
+            });
+
+            odometryCanvas.addEventListener('mouseup', () => {
+                isDragging = false;
+                odometryCanvas.style.cursor = 'grab';
+            });
+
+            odometryCanvas.addEventListener('mouseleave', () => {
+                isDragging = false;
+                odometryCanvas.style.cursor = 'grab';
+            });
+
+            // Mouse wheel event handler for zooming
+            odometryCanvas.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+                const newZoom = zoomLevel * zoomFactor;
+                
+                // Limit zoom range
+                if (newZoom >= 0.01 && newZoom <= 10) {
+                    // Zoom towards mouse cursor
+                    const mouseX = e.offsetX;
+                    const mouseY = e.offsetY;
+                    
+                    panOffset.x = mouseX - (mouseX - panOffset.x) * zoomFactor;
+                    panOffset.y = mouseY - (mouseY - panOffset.y) * zoomFactor;
+                    zoomLevel = newZoom;
+                    
+                    // Re-render with current data
+                    renderCanvas(lastOdometry);
+                }
+            });
+
+            odometryCanvas.style.cursor = 'grab';
+
+            const eventSourceOdometry = new EventSource('/stream_odometry');
+            eventSourceOdometry.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                const x = data.x;
+                const y = data.y;
+                const theta = data.theta;
+                lastOdometry = {x, y, theta, circles: data.circles || [], lines: data.lines || []};
+                renderCanvas(lastOdometry);
+            };   
+        </script>
+    </body>
+</html>

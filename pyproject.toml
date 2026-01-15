@@ -14,6 +14,8 @@ dependencies = [
     "adafruit-blinka",
     "numpy",
     "pyserial",
+    "opencv-python",
+    "flask",
 ]
 
 [tool.setuptools]
