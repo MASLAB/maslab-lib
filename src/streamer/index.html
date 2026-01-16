@@ -251,7 +251,7 @@
                 const robotY = height / 2 - y * 10;
                 ctx.save();
                 ctx.translate(robotX, robotY);
-                ctx.rotate(-theta * Math.PI / 180);
+                ctx.rotate(-theta);
                 ctx.beginPath();
                 ctx.moveTo(robotSize, 0);
                 ctx.lineTo(-robotSize / 2, robotSize / 2);
