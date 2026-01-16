@@ -193,7 +193,7 @@
                 x: odometryCanvas.width / 2,
                 y: odometryCanvas.height / 2
             };
-            let zoomLevel = 0.1;
+            let zoomLevel = 0.2;
             let isDragging = false;
             let dragStart = { x: 0, y: 0 };
 
@@ -222,16 +222,16 @@
 
                 // Reference rectangle (-180, 180)
                 ctx.strokeStyle = '#ddd';
-                ctx.lineWidth = 10;
-                ctx.strokeRect(width / 2 - 180 * 10, height / 2 - 180 * 10, 360 * 10, 360 * 10);
+                ctx.lineWidth = 5;
+                ctx.strokeRect(width / 2 - 1 * 1000, height / 2 - 1 * 1000, 2 * 1000, 2 * 1000);
                 ctx.stroke();
                 // text
                 ctx.fillStyle = '#888';
-                ctx.font = '100px IBM Plex Mono';
-                ctx.fillText('(-180, 180)', width / 2 - 180 * 10, height / 2 + 180 * 10 + 5);
-                ctx.fillText('(180, 180)', width / 2 + 180 * 10 - 60, height / 2 + 180 * 10 + 5);
-                ctx.fillText('(-180, -180)', width / 2 - 180 * 10, height / 2 - 180 * 10 + 15);
-                ctx.fillText('(180, -180)', width / 2 + 180 * 10 - 60, height / 2 - 180 * 10 + 15);
+                ctx.font = '50px IBM Plex Mono';
+                ctx.fillText('(-1, 1)', - 1 * 1000 - 200, 1 * 1000 + 50);
+                ctx.fillText('(1, 1)', 1 * 1000, 1 * 1000 + 50);
+                ctx.fillText('(-1,-1)', - 1 * 1000 - 200, -1 * 1000);
+                ctx.fillText('(1,-1)', 1 * 1000, -1 * 1000);
 
                 // Past trajectory
                 pastTrajectory.push({x: x, y: y});
@@ -239,16 +239,16 @@
                 ctx.strokeStyle = '#c26133';
                 ctx.lineWidth = 10;
                 for (const point of pastTrajectory) {
-                    const px = width / 2 + point.x * 10; // Scale for visibility
-                    const py = height / 2 - point.y * 10; // Invert y-axis
+                    const px = width / 2 + point.x * 1000; // Scale for visibility
+                    const py = height / 2 - point.y * 1000; // Invert y-axis
                     ctx.lineTo(px, py);
                 }
                 ctx.stroke();
 
                 // Draw the current position (robot is a triangle)
                 const robotSize = 100;
-                const robotX = width / 2 + x * 10;
-                const robotY = height / 2 - y * 10;
+                const robotX = width / 2 + x * 1000;
+                const robotY = height / 2 - y * 1000;
                 ctx.save();
                 ctx.translate(robotX, robotY);
                 ctx.rotate(-theta);
@@ -263,19 +263,19 @@
 
                 // Draw circles
                 for (circle of circles) {
-                    const cx = width / 2 + circle.x * 10;
-                    const cy = height / 2 - circle.y * 10;
+                    const cx = width / 2 + circle.x * 1000;
+                    const cy = height / 2 - circle.y * 1000;
                     const color = circle.c || '#888';
                     ctx.fillStyle = color;
                     ctx.beginPath();
-                    ctx.arc(cx, cy, 100, 0, 2 * Math.PI);
+                    ctx.arc(cx, cy, 50, 0, 2 * Math.PI);
                     ctx.fill();
                 }
                 for (line of lines) {
-                    const x1 = width / 2 + line.x1 * 10;
-                    const y1 = height / 2 - line.y1 * 10;
-                    const x2 = width / 2 + line.x2 * 10;
-                    const y2 = height / 2 - line.y2 * 10;
+                    const x1 = width / 2 + line.x1 * 1000;
+                    const y1 = height / 2 - line.y1 * 1000;
+                    const x2 = width / 2 + line.x2 * 1000;
+                    const y2 = height / 2 - line.y2 * 1000;
                     const color = line.c || '#888';
                     ctx.strokeStyle = color;
                     ctx.lineWidth = 10;
