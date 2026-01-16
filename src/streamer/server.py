@@ -45,8 +45,8 @@ class Streamer:
         data_copy = deepcopy(data)
         self.__json_data = data_copy
 
-    def set_img(self, img: cv2.Mat, name: str = "default") -> None:
-        img_copy = deepcopy(img)
+    def set_img(self, img: cv2.Mat) -> None:
+        img_copy = img.copy()
         self.__img = img_copy
 
     def set_odometry(self, odometry: Odometry) -> None:
