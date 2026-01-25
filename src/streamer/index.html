@@ -14,19 +14,22 @@
             }
             body {
                 font-family: 'IBM Plex Sans', sans-serif;
-                background-color: #f0f0f0;
+                background-color: #eee;
                 padding: 20px;
             }
             .grid {
                 display: grid;
                 grid-template-columns: 1fr 1fr 1fr;
-                gap: 20px;
-            }
-            .container {
                 background-color: white;
                 border-radius: 8px;
-                padding: 20px;
                 border: 1px solid #ddd;
+            }
+            .container {
+                padding: 20px;
+                box-sizing: border-box;
+            }
+            .container:not(:last-child) {
+                border-right: 1px solid #ddd;
             }
             h1 {
                 color: #19656c;
@@ -35,6 +38,9 @@
                 color: #c26133;
                 padding: 0;
                 margin: 0 0 10px 0;
+                text-transform: uppercase;
+                letter-spacing: 0.1em;
+                font-size: 14px;
             }
             p {
                 margin: 2px 0;
@@ -50,15 +56,64 @@
                 background-color: #f9f9f9;
                 box-sizing: border-box;
             }
+            a {
+                text-decoration: none;
+                color: #aaa;
+                padding-right: 10px;
+                text-transform: uppercase;
+                letter-spacing: 0.1em;
+                font-size: 14px;
+            }
+            #alive {
+                font-size: 14px;
+                padding: 4px 8px;
+                border-radius: calc(infinity * 1px);
+                border: 1px solid #c26133;
+                display: flex;
+                align-items: center;
+                color: #c26133;
+                text-transform: uppercase;
+                letter-spacing: 0.1em;
+            }
+            #alive-dot {
+                width: 10px;
+                height: 10px;
+                background-color: #c26133;
+                border-radius: calc(infinity * 1px);
+                margin-right: 6px;
+                animation: pulse 1s infinite;
+            }
+            @keyframes pulse {
+                0% {
+                    transform: scale(1);
+                    opacity: 1;
+                }
+                100% {
+                    transform: scale(1.5);
+                    opacity: 0;
+                }
+            }
+            #header {
+                display: flex;
+                flex-direction: row;
+                align-items: center;
+                justify-content: space-between;
+            }
         </style>
-        <h1>/maslab<span style="color:#c26133">/streamer</span></h1>
+        <div id="header">
+            <h1>/maslab<span style="color:#c26133">/streamer</span></h1>
+            <span id=alive>
+                <span id="alive-dot"></span>
+                <span id="alive-text">Connected</span>
+            </span>
+        </div>
         <div class="grid">
             <div class="container">
                 <h2>JSON Data</h2>
                 <div id="data"></div>
                 <br>
                 <label for="raw">
-                    <input type="checkbox" id="raw" name="raw" onchange="raw_json = this.checked">
+                    <input type="checkbox" id="raw" name="raw" onchange="raw_json = this.checked" style="margin-left:0">
                     Raw JSON
                 </label>
             </div>
@@ -68,9 +123,17 @@
             </div>
             <div class="container">
                 <h2>Odometry</h2>
-                <canvas id="odometry-canvas"></canvas>
+                <canvas id="odometry-canvas" width="400"></canvas>
             </div>  
         </div>
+        <br>
+        <p>
+            <a href="https://github.com/MASLAB/MASLAB-wiki/wiki/4-Software#telemetry">
+                [Documentation]
+            </a> <a href="https://github.com/MASLAB/maslab-lib">
+                [Source Code]
+            </a>
+        </p>
         <script>
             const dataDiv = document.getElementById('data');
             const eventSource = new EventSource('/stream_data');
@@ -100,10 +163,37 @@
                     }
                 }
             };
+            setInterval(() => {
+                if (eventSource.readyState === EventSource.OPEN) {
+                    document.getElementById('alive-text').textContent = 'Connected';
+                    document.getElementById('alive-dot').style.backgroundColor = '#c26133';
+                    document.getElementById('alive').style.borderColor = '#c26133';
+                    document.getElementById('alive').style.color = '#c26133';
+                }
+                else {
+                    document.getElementById('alive-text').textContent = 'Disconnected';
+                    document.getElementById('alive-dot').style.backgroundColor = '#888';
+                    document.getElementById('alive').style.borderColor = '#888';
+                    document.getElementById('alive').style.color = '#888';
+                }
+            }, 100);
+
+             // Odometry canvas setup
+             const
+
+            odometryCanvas = document.getElementById('odometry-canvas');
+            // Set canvas dimensions to match display size
+            odometryCanvas.width = odometryCanvas.offsetWidth;
+            odometryCanvas.height = odometryCanvas.offsetWidth; // Make it square
+            
+            const odometryCtx = odometryCanvas.getContext('2d');
 
             pastTrajectory = [];
-            let panOffset = { x: 0, y: 0 };
-            let zoomLevel = 0.1;
+            let panOffset = {
+                x: odometryCanvas.width / 2,
+                y: odometryCanvas.height / 2
+            };
+            let zoomLevel = 0.2;
             let isDragging = false;
             let dragStart = { x: 0, y: 0 };
 
@@ -118,12 +208,12 @@
                 const {x, y, theta, circles, lines} = lastOdometry;
 
                 const ctx = odometryCanvas.getContext('2d');
-                const width = odometryCanvas.width / zoomLevel;
-                const height = odometryCanvas.height / zoomLevel;
+                const width = 0; //odometryCanvas.width / zoomLevel;
+                const height = 0; //odometryCanvas.height / zoomLevel;
 
-                ctx.clearRect(0, 0, width, height);
+                ctx.clearRect(0, 0, odometryCanvas.width, odometryCanvas.height);
                 ctx.fillStyle = '#f0f0f0';
-                ctx.fillRect(0, 0, width, height);
+                ctx.fillRect(0, 0, odometryCanvas.width, odometryCanvas.height);
 
                 // Apply transformations
                 ctx.save();
@@ -132,16 +222,16 @@
 
                 // Reference rectangle (-180, 180)
                 ctx.strokeStyle = '#ddd';
-                ctx.lineWidth = 10;
-                ctx.strokeRect(width / 2 - 180 * 10, height / 2 - 180 * 10, 360 * 10, 360 * 10);
+                ctx.lineWidth = 5;
+                ctx.strokeRect(width / 2 - 1 * 1000, height / 2 - 1 * 1000, 2 * 1000, 2 * 1000);
                 ctx.stroke();
                 // text
                 ctx.fillStyle = '#888';
-                ctx.font = '100px IBM Plex Mono';
-                ctx.fillText('(-180, 180)', width / 2 - 180 * 10, height / 2 + 180 * 10 + 5);
-                ctx.fillText('(180, 180)', width / 2 + 180 * 10 - 60, height / 2 + 180 * 10 + 5);
-                ctx.fillText('(-180, -180)', width / 2 - 180 * 10, height / 2 - 180 * 10 + 15);
-                ctx.fillText('(180, -180)', width / 2 + 180 * 10 - 60, height / 2 - 180 * 10 + 15);
+                ctx.font = '50px IBM Plex Mono';
+                ctx.fillText('(-1, 1)', - 1 * 1000 - 200, 1 * 1000 + 50);
+                ctx.fillText('(1, 1)', 1 * 1000, 1 * 1000 + 50);
+                ctx.fillText('(-1,-1)', - 1 * 1000 - 200, -1 * 1000);
+                ctx.fillText('(1,-1)', 1 * 1000, -1 * 1000);
 
                 // Past trajectory
                 pastTrajectory.push({x: x, y: y});
@@ -149,19 +239,19 @@
                 ctx.strokeStyle = '#c26133';
                 ctx.lineWidth = 10;
                 for (const point of pastTrajectory) {
-                    const px = width / 2 + point.x * 10; // Scale for visibility
-                    const py = height / 2 - point.y * 10; // Invert y-axis
+                    const px = width / 2 + point.x * 1000; // Scale for visibility
+                    const py = height / 2 - point.y * 1000; // Invert y-axis
                     ctx.lineTo(px, py);
                 }
                 ctx.stroke();
 
                 // Draw the current position (robot is a triangle)
                 const robotSize = 100;
-                const robotX = width / 2 + x * 10;
-                const robotY = height / 2 - y * 10;
+                const robotX = width / 2 + x * 1000;
+                const robotY = height / 2 - y * 1000;
                 ctx.save();
                 ctx.translate(robotX, robotY);
-                ctx.rotate(-theta * Math.PI / 180);
+                ctx.rotate(-theta);
                 ctx.beginPath();
                 ctx.moveTo(robotSize, 0);
                 ctx.lineTo(-robotSize / 2, robotSize / 2);
@@ -173,19 +263,19 @@
 
                 // Draw circles
                 for (circle of circles) {
-                    const cx = width / 2 + circle.x * 10;
-                    const cy = height / 2 - circle.y * 10;
+                    const cx = width / 2 + circle.x * 1000;
+                    const cy = height / 2 - circle.y * 1000;
                     const color = circle.c || '#888';
                     ctx.fillStyle = color;
                     ctx.beginPath();
-                    ctx.arc(cx, cy, 100, 0, 2 * Math.PI);
+                    ctx.arc(cx, cy, 50, 0, 2 * Math.PI);
                     ctx.fill();
                 }
                 for (line of lines) {
-                    const x1 = width / 2 + line.x1 * 10;
-                    const y1 = height / 2 - line.y1 * 10;
-                    const x2 = width / 2 + line.x2 * 10;
-                    const y2 = height / 2 - line.y2 * 10;
+                    const x1 = width / 2 + line.x1 * 1000;
+                    const y1 = height / 2 - line.y1 * 1000;
+                    const x2 = width / 2 + line.x2 * 1000;
+                    const y2 = height / 2 - line.y2 * 1000;
                     const color = line.c || '#888';
                     ctx.strokeStyle = color;
                     ctx.lineWidth = 10;
@@ -196,13 +286,6 @@
                 }
                 ctx.restore();
             }
-
-            odometryCanvas = document.getElementById('odometry-canvas');
-            // Set canvas dimensions to match display size
-            odometryCanvas.width = odometryCanvas.offsetWidth;
-            odometryCanvas.height = odometryCanvas.offsetWidth; // Make it square
-            
-            const odometryCtx = odometryCanvas.getContext('2d');
             
             // Mouse event handlers for panning
             odometryCanvas.addEventListener('mousedown', (e) => {
